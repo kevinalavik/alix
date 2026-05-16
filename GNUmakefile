@@ -1,12 +1,9 @@
-# Nuke built-in rules.
 .SUFFIXES:
 
-# Default user QEMU flags. These are appended to the QEMU command calls.
-QEMUFLAGS := -m 2G
+QEMUFLAGS := -m 2G -serial stdio
 
 override IMAGE_NAME := alix
 
-# Toolchain for building the 'limine' executable for the host.
 HOST_CC := cc
 HOST_CFLAGS := -g -O2 -pipe
 HOST_CPPFLAGS :=

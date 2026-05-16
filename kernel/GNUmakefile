@@ -1,5 +1,12 @@
 .SUFFIXES:
 override OUTPUT := alix
+override VERSION := $(shell \
+    git -C "$(dir $(abspath $(lastword $(MAKEFILE_LIST))))" rev-parse --short HEAD 2>/dev/null \
+    || echo unknown)$(shell \
+    git -C "$(dir $(abspath $(lastword $(MAKEFILE_LIST))))" \
+    diff --quiet --ignore-submodules HEAD 2>/dev/null \
+    && echo -clean || echo -dirty)
+
 
 PREFIX := /usr/local
 
@@ -25,7 +32,7 @@ ifeq ($(TOOLCHAIN),llvm)
 endif
 
 CFLAGS := -g -O2 -pipe
-CPPFLAGS :=
+CPPFLAGS := -DALIX_VERSION=\"$(VERSION)\"
 NASMFLAGS := -g
 LDFLAGS :=
 
@@ -44,7 +51,7 @@ endif
 override CFLAGS += \
     -Wall \
     -Wextra \
-    -std=gnu11 \
+    -std=c99 \
     -nostdinc \
     -ffreestanding \
     -fno-stack-protector \

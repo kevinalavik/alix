@@ -1,6 +1,39 @@
-#include <memory.h>
-#include <stddef.h>
-#include <stdint.h>
+#include <lib/string.h>
+
+size_t strlen(const char *s)
+{
+	size_t len = 0;
+
+	if (s == NULL)
+		return 0;
+
+	while (s[len] != '\0')
+		len++;
+
+	return len;
+}
+
+size_t strlcpy(char *dst, const char *src, size_t dstsz)
+{
+	size_t i = 0;
+
+	if (src == NULL)
+		src = "";
+
+	if (dstsz != 0) {
+		while (i + 1 < dstsz && src[i] != '\0') {
+			dst[i] = src[i];
+			i++;
+		}
+
+		dst[i] = '\0';
+	}
+
+	while (src[i] != '\0')
+		i++;
+
+	return i;
+}
 
 void *memcpy(void *restrict dest, const void *restrict src, size_t n)
 {
