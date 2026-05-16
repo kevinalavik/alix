@@ -56,10 +56,8 @@ void kmain(void)
 	boot_tsc = rdtsc();
 	klog_init();
 
-	klog("hello from alix (" ALIX_VERSION ")");
-
 	gdt_init();
+	klog("initialized GDT for BSP (cpu0)");
 
-	kprintf("Welcome to Alix!\r\n");
 	hlt();
 }
