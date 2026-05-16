@@ -6,14 +6,16 @@
 #include <dev/uart.h>
 #include <dev/pit.h>
 #include <api/time.h>
-#include <sys/liminereq.h>
-#include <sys/alix.h>
+#include <boot/liminereq.h>
+#include <core/alix.h>
+#include <debug/panic.h>
 #define KLOG_NS "alix"
-#include <sys/klog.h>
+#include <log/klog.h>
 #include <cpu/gdt.h>
 #include <flanterm.h>
 #include <flanterm_backends/fb.h>
 #include <lib/kprintf.h>
+#include <cpu/idt.h>
 
 uint64_t boot_tsc = 0;
 struct flanterm_context *ft_ctx = NULL;
@@ -21,13 +23,12 @@ struct flanterm_context *ft_ctx = NULL;
 void kmain(void)
 {
 	if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
-		nointloop();
+		kpanic(NULL, "unsupported limine base revision");
 	}
 
 	if (framebuffer_request.response == NULL ||
 		framebuffer_request.response->framebuffer_count < 1) {
-		klog("error: no framebuffer");
-		nointloop(); /* no point in continuing, this is a modern OS we neeeed graphics :^) */
+		kpanic(NULL, "no framebuffer");
 	}
 
 	struct limine_framebuffer *framebuffer =
@@ -42,8 +43,7 @@ void kmain(void)
 		NULL, 0, 0, 1, 0, 0, 0, 0);
 
 	if (ft_ctx == NULL) {
-		klog("error: failed to initialize flanterm.");
-		nointloop();
+		kpanic(NULL, "failed to initialize flanterm");
 	}
 
 	uart_init();
@@ -58,6 +58,9 @@ void kmain(void)
 
 	gdt_init();
 	klog("initialized GDT for BSP (cpu0)");
+
+	idt_init();
+	klog("initialized IDT");
 
 	hlt();
 }

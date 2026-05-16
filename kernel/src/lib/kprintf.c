@@ -3,7 +3,8 @@
 #include <stdint.h>
 #include <dev/uart.h>
 #include <flanterm.h>
-#include <sys/alix.h>
+#include <lib/string.h>
+#include <core/alix.h>
 
 static void buf_putc(char *buf, size_t bufsz, size_t *pos, char c)
 {

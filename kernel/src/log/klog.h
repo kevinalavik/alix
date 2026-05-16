@@ -1,5 +1,5 @@
-#ifndef SYS_KLOG_H
-#define SYS_KLOG_H
+#ifndef LOG_KLOG_H
+#define LOG_KLOG_H
 
 #include <stdarg.h>
 #include <stddef.h>
@@ -28,4 +28,4 @@ void kvlog_write(const char *ns, const char *fmt, va_list ap);
 #define klog(fmt, ...) klog_write(KLOG_NS, fmt, ##__VA_ARGS__)
 #define klog_ns(ns, fmt, ...) klog_write(ns, fmt, ##__VA_ARGS__)
 
-#endif // SYS_KLOG_H
+#endif // LOG_KLOG_H

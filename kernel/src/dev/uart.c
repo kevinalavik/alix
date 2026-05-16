@@ -2,7 +2,7 @@
 #include <stdbool.h>
 #include <cpu/instr.h>
 #include <lib/string.h>
-#include <sys/alix.h>
+#include <core/alix.h>
 
 static void _uart_write_reg(uint16_t port, uint8_t offset, uint8_t value)
 {

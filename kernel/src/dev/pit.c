@@ -2,7 +2,7 @@
 #include <stdint.h>
 #include <api/time.h>
 #include <cpu/instr.h>
-#include <sys/alix.h>
+#include <core/alix.h>
 
 #define PIT_HZ 1193182ULL
 #define PIT_CALIBRATE_MS 50ULL

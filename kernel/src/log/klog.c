@@ -1,13 +1,15 @@
-#include <sys/klog.h>
+#include <log/klog.h>
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdarg.h>
+
 #include <api/time.h>
 #include <dev/uart.h>
 #include <lib/kprintf.h>
 #include <lib/string.h>
-#include <sys/alix.h>
+#include <core/alix.h>
 
 static struct klog_record klog_ring[KLOG_RING_SIZE];
 
@@ -48,9 +50,10 @@ static void klog_emit(const struct klog_record *rec)
 	char line[512];
 	size_t pos = 0;
 
-	ksnprintf(line, sizeof(line), "[%llu.%03llu] %s: ",
-			  (unsigned long long)(rec->time_us / 1000000ULL),
-			  (unsigned long long)((rec->time_us / 1000ULL) % 1000ULL), rec->ns);
+	ksnprintf(
+		line, sizeof(line),
+		"[%llu.%03llu] %s: ", (unsigned long long)(rec->time_us / 1000000ULL),
+		(unsigned long long)((rec->time_us / 1000ULL) % 1000ULL), rec->ns);
 	pos = strlen(line);
 
 	klog_buf_puts_crlf(line, sizeof(line), &pos, rec->msg);
@@ -62,7 +65,9 @@ static void klog_emit(const struct klog_record *rec)
 		line[pos] = '\0';
 
 	uart_wstr(line);
-	flanterm_write(ft_ctx, line, strlen(line));
+
+	if (ft_ctx != NULL)
+		flanterm_write(ft_ctx, line, strlen(line));
 }
 
 static void klog_ring_push(uint64_t time_us, const char *ns, const char *msg)

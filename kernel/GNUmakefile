@@ -54,6 +54,7 @@ override CFLAGS += \
     -std=c99 \
     -nostdinc \
     -ffreestanding \
+    -fno-omit-frame-pointer \
     -fno-stack-protector \
     -fno-stack-check \
     -fno-lto \
@@ -98,15 +99,30 @@ override ASFILES := $(filter %.S,$(SRCFILES))
 override NASMFILES := $(filter %.asm,$(SRCFILES))
 override OBJ := $(addprefix obj/,$(CFILES:.c=.c.o) $(ASFILES:.S=.S.o) $(NASMFILES:.asm=.asm.o))
 override HEADER_DEPS := $(addprefix obj/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d))
+override PRELINK := bin/$(OUTPUT).prelink
+override KALLSYMS_SRC := obj/generated/kallsyms.c
+override KALLSYMS_OBJ := $(KALLSYMS_SRC).o
 
 .PHONY: all
 all: bin/$(OUTPUT)
 
 -include $(HEADER_DEPS)
 
-bin/$(OUTPUT): GNUmakefile build/linker.ld $(OBJ)
+bin/$(OUTPUT): GNUmakefile build/linker.ld $(OBJ) $(KALLSYMS_OBJ)
 	mkdir -p "$(dir $@)"
-	$(LD) $(LDFLAGS) $(OBJ) -o $@
+	$(LD) $(LDFLAGS) $(OBJ) $(KALLSYMS_OBJ) -o $@
+
+$(PRELINK): GNUmakefile build/linker.ld $(OBJ)
+	mkdir -p "$(dir $@)"
+	$(LD) $(LDFLAGS) --defsym=kallsyms=0 --defsym=kallsyms_count=0 $(OBJ) -o $@
+
+$(KALLSYMS_SRC): $(PRELINK) build/gen-kallsyms.sh
+	mkdir -p "$(dir $@)"
+	sh build/gen-kallsyms.sh "$(PRELINK)" > "$@"
+
+$(KALLSYMS_OBJ): $(KALLSYMS_SRC) GNUmakefile
+	mkdir -p "$(dir $@)"
+	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
 
 obj/%.c.o: %.c GNUmakefile
 	mkdir -p "$(dir $@)"

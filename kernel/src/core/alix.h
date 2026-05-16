@@ -1,5 +1,5 @@
-#ifndef SYS_ALIX_H
-#define SYS_ALIX_H
+#ifndef CORE_ALIX_H
+#define CORE_ALIX_H
 
 #include <stdint.h>
 #include <flanterm.h>
@@ -12,4 +12,4 @@
 extern uint64_t boot_tsc;
 extern struct flanterm_context *ft_ctx;
 
-#endif // SYS_ALIX_H
+#endif // CORE_ALIX_H

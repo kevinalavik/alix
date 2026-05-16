@@ -18,7 +18,7 @@ static inline void hlt()
 	__asm__ volatile("hlt");
 }
 
-static inline void nointloop()
+static inline void nointloop(void)
 {
 	cli();
 	for (;;)

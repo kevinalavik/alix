@@ -1,9 +1,9 @@
 #include <cpu/gdt.h>
 #include <lib/string.h>
-#include <sys/alix.h>
+#include <core/alix.h>
 
 #define KLOG_NS "gdt"
-#include <sys/klog.h>
+#include <log/klog.h>
 
 /* TODO: smp support */
 

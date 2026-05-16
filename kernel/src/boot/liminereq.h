@@ -1,5 +1,5 @@
-#ifndef SYS_LIMINEREQ_H
-#define SYS_LIMINEREQ_H
+#ifndef BOOT_LIMINEREQ_H
+#define BOOT_LIMINEREQ_H
 
 __attribute__((used, section(".limine_requests"))) static volatile uint64_t
 	limine_base_revision[] = LIMINE_BASE_REVISION(6);
@@ -18,4 +18,4 @@ __attribute__((used,
 __attribute__((used, section(".limine_requests_end"))) static volatile uint64_t
 	limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARKER;
 
-#endif // SYS_LIMINEREQ_H
+#endif // BOOT_LIMINEREQ_H
