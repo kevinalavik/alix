@@ -23,18 +23,18 @@ static void panic_log_addr(const char *label, uint64_t addr)
 
 	if (sym != NULL && sym->name != NULL) {
 		if (sym->size != 0) {
-			klog_ns("panic", "%s[<%016llx>] %s+0x%llx/0x%llx", label,
+			klog_ns_force("panic", "%s[<%016llx>] %s+0x%llx/0x%llx", label,
 					(unsigned long long)addr, sym->name,
 					(unsigned long long)offset, (unsigned long long)sym->size);
 		} else {
-			klog_ns("panic", "%s[<%016llx>] %s+0x%llx", label,
+			klog_ns_force("panic", "%s[<%016llx>] %s+0x%llx", label,
 					(unsigned long long)addr, sym->name,
 					(unsigned long long)offset);
 		}
 		return;
 	}
 
-	klog_ns("panic", "%s[<%016llx>]", label, (unsigned long long)addr);
+	klog_ns_force("panic", "%s[<%016llx>]", label, (unsigned long long)addr);
 }
 
 static void panic_log_trace(size_t depth, uint64_t addr)
@@ -44,18 +44,18 @@ static void panic_log_trace(size_t depth, uint64_t addr)
 
 	if (sym != NULL && sym->name != NULL) {
 		if (sym->size != 0) {
-			klog_ns("panic", "  #%zu [<%016llx>] %s+0x%llx/0x%llx", depth,
+			klog_ns_force("panic", "  #%zu [<%016llx>] %s+0x%llx/0x%llx", depth,
 					(unsigned long long)addr, sym->name,
 					(unsigned long long)offset, (unsigned long long)sym->size);
 		} else {
-			klog_ns("panic", "  #%zu [<%016llx>] %s+0x%llx", depth,
+			klog_ns_force("panic", "  #%zu [<%016llx>] %s+0x%llx", depth,
 					(unsigned long long)addr, sym->name,
 					(unsigned long long)offset);
 		}
 		return;
 	}
 
-	klog_ns("panic", "  #%zu [<%016llx>]", depth, (unsigned long long)addr);
+	klog_ns_force("panic", "  #%zu [<%016llx>]", depth, (unsigned long long)addr);
 }
 
 static void panic_log_message(const char *fmt, va_list ap)
@@ -63,7 +63,7 @@ static void panic_log_message(const char *fmt, va_list ap)
 	char msg[KLOG_MSG_MAX];
 
 	kvsnprintf(msg, sizeof(msg), fmt, ap);
-	klog_ns("panic", "Kernel panic: %s", msg);
+	klog_ns_force("panic", "Kernel panic: %s", msg);
 }
 
 static bool panic_frame_is_sane(const struct panic_frame *frame,
@@ -92,7 +92,7 @@ static bool panic_frame_is_sane(const struct panic_frame *frame,
 
 static void panic_dump_backtrace(interrupt_frame_t *regs)
 {
-	klog_ns("panic", "Call Trace:");
+	klog_ns_force("panic", "Call Trace:");
 
 	if (regs == NULL)
 		return;
@@ -123,29 +123,29 @@ static void panic_dump_regs(interrupt_frame_t *regs)
 	if (regs == NULL)
 		return;
 
-	klog_ns("panic", "RAX: %016llx  RBX: %016llx  RCX: %016llx  RDX: %016llx",
+	klog_ns_force("panic", "RAX: %016llx  RBX: %016llx  RCX: %016llx  RDX: %016llx",
 			(unsigned long long)regs->rax, (unsigned long long)regs->rbx,
 			(unsigned long long)regs->rcx, (unsigned long long)regs->rdx);
-	klog_ns("panic", "RSI: %016llx  RDI: %016llx  RBP: %016llx  RSP: %016llx",
+	klog_ns_force("panic", "RSI: %016llx  RDI: %016llx  RBP: %016llx  RSP: %016llx",
 			(unsigned long long)regs->rsi, (unsigned long long)regs->rdi,
 			(unsigned long long)regs->rbp, (unsigned long long)regs->rsp);
-	klog_ns("panic", "R8:  %016llx  R9:  %016llx  R10: %016llx  R11: %016llx",
+	klog_ns_force("panic", "R8:  %016llx  R9:  %016llx  R10: %016llx  R11: %016llx",
 			(unsigned long long)regs->r8, (unsigned long long)regs->r9,
 			(unsigned long long)regs->r10, (unsigned long long)regs->r11);
-	klog_ns("panic", "R12: %016llx  R13: %016llx  R14: %016llx  R15: %016llx",
+	klog_ns_force("panic", "R12: %016llx  R13: %016llx  R14: %016llx  R15: %016llx",
 			(unsigned long long)regs->r12, (unsigned long long)regs->r13,
 			(unsigned long long)regs->r14, (unsigned long long)regs->r15);
-	klog_ns("panic", "CS:  %016llx  SS:  %016llx  DS:  %016llx  ES:  %016llx",
+	klog_ns_force("panic", "CS:  %016llx  SS:  %016llx  DS:  %016llx  ES:  %016llx",
 			(unsigned long long)regs->cs, (unsigned long long)regs->ss,
 			(unsigned long long)regs->ds, (unsigned long long)regs->es);
-	klog_ns("panic", "CR0: %016llx  CR2: %016llx  CR3: %016llx  CR4: %016llx",
+	klog_ns_force("panic", "CR0: %016llx  CR2: %016llx  CR3: %016llx  CR4: %016llx",
 			(unsigned long long)regs->cr0, (unsigned long long)regs->cr2,
 			(unsigned long long)regs->cr3, (unsigned long long)regs->cr4);
-	klog_ns("panic", "RFLAGS: %016llx  ERR: %016llx  VEC: %llu",
+	klog_ns_force("panic", "RFLAGS: %016llx  ERR: %016llx  VEC: %llu",
 			(unsigned long long)regs->rflags, (unsigned long long)regs->err,
 			(unsigned long long)regs->vector);
 	panic_log_addr("RIP: ", regs->rip);
-	klog_ns("panic", "CPU: BSP");
+	klog_ns_force("panic", "CPU: BSP");
 }
 
 void vkpanic(interrupt_frame_t *regs, const char *fmt, va_list ap)
@@ -155,7 +155,7 @@ void vkpanic(interrupt_frame_t *regs, const char *fmt, va_list ap)
 	panic_log_message(fmt, ap);
 	panic_dump_regs(regs);
 	panic_dump_backtrace(regs);
-	klog_ns("panic", "---[ end Kernel panic ]---");
+	klog_ns_force("panic", "---[ end Kernel panic ]---");
 
 	cli();
 	for (;;)
@@ -198,8 +198,8 @@ void kpanic_with_regs(interrupt_frame_t *regs, const char *fmt, ...)
  *
  * rax recovery: 21 pushes * 8 = 168 bytes above rsp at that point.
  */
-__attribute__((naked)) void kpanic(interrupt_frame_t *regs, const char *fmt,
-								   ...)
+__attribute__((naked)) void kpanic(maybe_unused interrupt_frame_t *regs,
+								   maybe_unused const char *fmt, ...)
 {
 	__asm__ volatile("testq  %%rdi, %%rdi\n\t"
 					 "jnz    1f\n\t"
@@ -261,7 +261,7 @@ __attribute__((naked)) void kpanic(interrupt_frame_t *regs, const char *fmt,
 					 "pushq  %%rax\n\t"
 
 					 "movq   %%rsp, %%rdi\n\t"
-					 "call   vkpanic\n\t"
+					 "call   kpanic_with_regs\n\t"
 
 					 "1:\n\t"
 					 "jmp    kpanic_with_regs\n\t"

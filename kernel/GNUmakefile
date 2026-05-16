@@ -25,6 +25,7 @@ else
 endif
 
 LD := $(TOOLCHAIN_PREFIX)ld
+PYTHON ?= python3
 
 ifeq ($(TOOLCHAIN),llvm)
     CC := clang
@@ -52,7 +53,6 @@ override CFLAGS += \
     -Wall \
     -Wextra \
     -std=c99 \
-    -nostdinc \
     -ffreestanding \
     -fno-omit-frame-pointer \
     -fno-stack-protector \
@@ -102,6 +102,10 @@ override HEADER_DEPS := $(addprefix obj/,$(CFILES:.c=.c.d) $(ASFILES:.S=.S.d))
 override PRELINK := bin/$(OUTPUT).prelink
 override KALLSYMS_SRC := obj/generated/kallsyms.c
 override KALLSYMS_OBJ := $(KALLSYMS_SRC).o
+override CONFIG_HEADER := obj/generated/autoconf.h
+override KCONFIGLIB := kconfiglib/kconfiglib.py
+override KCONFIG_MENU := kconfiglib/menuconfig.py
+override KCONFIG_ENV := PYTHONPATH="$(abspath kconfiglib)" KCONFIG_CONFIG=".config" srctree="$(CURDIR)"
 
 .PHONY: all
 all: bin/$(OUTPUT)
@@ -122,19 +126,40 @@ $(KALLSYMS_SRC): $(PRELINK) build/gen-kallsyms.sh
 
 $(KALLSYMS_OBJ): $(KALLSYMS_SRC) GNUmakefile
 	mkdir -p "$(dir $@)"
-	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(CPPFLAGS) -include "$(CONFIG_HEADER)" -c $< -o $@
+
+$(KCONFIGLIB) $(KCONFIG_MENU):
+	@echo "error: Kconfiglib is missing; run ./build/get-deps from kernel/ or make menuconfig from the repository root" >&2
+	@false
+
+$(CONFIG_HEADER): Kconfig .config build/kconfig.py $(KCONFIGLIB)
+	$(KCONFIG_ENV) $(PYTHON) build/kconfig.py sync Kconfig .config "$(CONFIG_HEADER)"
+
+.config: Kconfig build/kconfig.py $(KCONFIGLIB)
+	$(KCONFIG_ENV) $(PYTHON) build/kconfig.py defconfig Kconfig .config "$(CONFIG_HEADER)"
+
+$(OBJ): $(CONFIG_HEADER)
 
 obj/%.c.o: %.c GNUmakefile
 	mkdir -p "$(dir $@)"
-	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(CPPFLAGS) -include "$(CONFIG_HEADER)" -c $< -o $@
 
 obj/%.S.o: %.S GNUmakefile
 	mkdir -p "$(dir $@)"
-	$(CC) $(CFLAGS) $(CPPFLAGS) -c $< -o $@
+	$(CC) $(CFLAGS) $(CPPFLAGS) -include "$(CONFIG_HEADER)" -c $< -o $@
 
 obj/%.asm.o: %.asm GNUmakefile
 	mkdir -p "$(dir $@)"
 	nasm $(NASMFLAGS) $< -o $@
+
+.PHONY: menuconfig
+menuconfig: $(KCONFIG_MENU)
+	$(KCONFIG_ENV) $(PYTHON) "$(KCONFIG_MENU)" Kconfig
+	$(KCONFIG_ENV) $(PYTHON) build/kconfig.py sync Kconfig .config "$(CONFIG_HEADER)"
+
+.PHONY: defconfig
+defconfig: $(KCONFIGLIB)
+	$(KCONFIG_ENV) $(PYTHON) build/kconfig.py defconfig Kconfig .config "$(CONFIG_HEADER)"
 
 .PHONY: clean
 clean:
@@ -142,7 +167,7 @@ clean:
 
 .PHONY: distclean
 distclean: clean
-	rm -rf .deps-obtained .cache compile_commands.json freestnd-c-hdrs cc-runtime limine-protocol
+	rm -rf .deps-obtained .cache compile_commands.json freestnd-c-hdrs cc-runtime limine-protocol kconfiglib
 
 .PHONY: install
 install: all

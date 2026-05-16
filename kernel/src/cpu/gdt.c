@@ -7,8 +7,6 @@
 
 /* TODO: smp support */
 
-#define GDT_DEBUG 1
-
 #define GDT_P 0b10000000
 #define GDT_DPL0 0b00000000
 #define GDT_DPL3 0b01100000
@@ -114,28 +112,51 @@ static uint8_t gdt_desc_flags(const gdt_descriptor_t *desc)
 	return desc->limit_flags & 0xf0;
 }
 
+static void gdt_dump_desc(uint32_t cpu_index, size_t index)
+{
+	gdt_descriptor_t *desc = &cpu_gdt[cpu_index].entries[index];
+	uint8_t access = desc->access;
+	uint8_t flags = gdt_desc_flags(desc);
+	uint64_t raw = ((uint64_t *)cpu_gdt[cpu_index].entries)[index];
+
+	klogvv(
+		"cpu%u: %02zu %-5s raw=0x%016llx base=0x%08x limit=0x%05x p=%u dpl=%u s=%u type=0x%x l=%u db=%u g=%u",
+		cpu_index, index, gdt_entry_name(index), (unsigned long long)raw,
+		gdt_desc_base(desc), gdt_desc_limit(desc), !!(access & 0x80),
+		(access >> 5) & 0x3, !!(access & 0x10), access & 0xf,
+		!!(flags & 0x20), !!(flags & 0x40), !!(flags & 0x80));
+}
+
 static void gdt_dump_cpu(uint32_t cpu_index)
 {
 	uint64_t *raw = (uint64_t *)cpu_gdt[cpu_index].entries;
 
-	klog("cpu%u: gdtr base=0x%016llx limit=0x%04x", cpu_index,
+	klogvv("cpu%u: gdtr base=0x%016llx limit=0x%04x", cpu_index,
 		 (unsigned long long)cpu_gdtr[cpu_index].base,
 		 cpu_gdtr[cpu_index].limit);
 
 	for (size_t i = 0; i < 7; i++) {
-		gdt_descriptor_t *desc = &cpu_gdt[cpu_index].entries[i];
-
 		if (i == 6) {
-			klog("cpu%u: %02zu %-5s raw=0x%016llx", cpu_index, i,
+			klogvv("cpu%u: %02zu %-5s raw=0x%016llx", cpu_index, i,
 				 gdt_entry_name(i), (unsigned long long)raw[i]);
 			continue;
 		}
-
-		klog(
-			"cpu%u: %02zu %-5s base=0x%08x limit=0x%05x flags=0x%02x access=0x%02x",
-			cpu_index, i, gdt_entry_name(i), gdt_desc_base(desc),
-			gdt_desc_limit(desc), gdt_desc_flags(desc), desc->access);
+		gdt_dump_desc(cpu_index, i);
 	}
+}
+
+static void gdt_dump_tss(uint32_t cpu_index)
+{
+	tss_t *tss = &cpu_tss[cpu_index];
+	uint64_t *raw = (uint64_t *)cpu_gdt[cpu_index].entries;
+
+	klogvv("cpu%u: tss base=%p limit=%zu iopb=0x%x", cpu_index, tss,
+		   sizeof(*tss) - 1, tss->iopb);
+	klogvv("cpu%u: tss rsp0=0x%016llx rsp1=0x%016llx rsp2=0x%016llx",
+		   cpu_index, (unsigned long long)tss->rsp[0],
+		   (unsigned long long)tss->rsp[1], (unsigned long long)tss->rsp[2]);
+	klogvv("cpu%u: tss desc rawlo=0x%016llx rawhi=0x%016llx", cpu_index,
+		   (unsigned long long)raw[5], (unsigned long long)raw[6]);
 }
 
 static void gdt_set_tss_descriptor(uint32_t cpu_index, tss_t *tss)
@@ -175,7 +196,6 @@ void gdt_init_cpu(uint32_t cpu_index)
 	cpu_gdtr[cpu_index].limit = sizeof(cpu_gdt[cpu_index].entries) - 1;
 	cpu_gdtr[cpu_index].base = (uint64_t)&cpu_gdt[cpu_index].entries;
 
-	klog("cpu%u: loading", cpu_index);
 	gdt_dump_cpu(cpu_index);
 
 	__asm__ volatile("lgdt %[g]\n"
@@ -210,13 +230,12 @@ void gdt_tss_init_cpu(uint32_t cpu_index, uint64_t rsp0)
 	tss->iopb = sizeof(*tss);
 
 	gdt_set_tss_descriptor(cpu_index, tss);
-
-	klog("cpu%u: tss base=0x%016llx rsp0=0x%016llx", cpu_index,
-		 (unsigned long long)tss, (unsigned long long)rsp0);
+	gdt_dump_tss(cpu_index);
 
 	__asm__ volatile("ltr %%ax" : : "a"((uint16_t)0x28) : "memory");
 
-	klog("cpu%u: tss loaded", cpu_index);
+	klogv("cpu%u: tss loaded rsp0=0x%016llx", cpu_index,
+		  (unsigned long long)rsp0);
 }
 
 void gdt_tss_init(uint64_t rsp0)
@@ -233,5 +252,5 @@ void gdt_set_kernel_stack(uint64_t rsp0)
 
 	cpu_tss[index].rsp[0] = rsp0;
 
-	klog("cpu%u: kernel stack rsp0=0x%016llx", index, (unsigned long long)rsp0);
+	klogvv("cpu%u: rsp0=0x%016llx", index, (unsigned long long)rsp0);
 }

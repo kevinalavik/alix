@@ -51,6 +51,11 @@ clone_repo_commit \
     flanterm \
     dfa1922c0749faf64c4423a81b233a20c08a7db7
 
+clone_repo_commit \
+    https://github.com/ulfalizer/Kconfiglib.git \
+    kconfiglib \
+    master
+
 touch .deps-obtained
 
 printf "\nDependencies obtained successfully.\n"

@@ -4,6 +4,9 @@
 /freestnd-c-hdrs
 /cc-runtime
 /limine-protocol
+/kconfiglib
 /bin
 /obj
 /flanterm
+/.config
+/.config.old

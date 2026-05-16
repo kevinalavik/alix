@@ -16,9 +16,12 @@
 #include <flanterm_backends/fb.h>
 #include <lib/kprintf.h>
 #include <cpu/idt.h>
+#include <mm/mm.h>
+#include <lib/string.h>
 
 uint64_t boot_tsc = 0;
 struct flanterm_context *ft_ctx = NULL;
+uint64_t hhdm_offset = 0;
 
 void kmain(void)
 {
@@ -47,20 +50,53 @@ void kmain(void)
 	}
 
 	uart_init();
-	klog("UART (16550) initialized");
+	klog("uart0: 16550 ready");
 	time_init();
-	klog("time API initialized");
 	pit_init();
-	klog("registered %s timer", time_source_name());
+	klog("timecounter: %s", time_source_name());
 
 	boot_tsc = rdtsc();
 	klog_init();
+	klogv("framebuffer: %llux%llu pitch=%llu bpp=%u addr=%p",
+		  (unsigned long long)framebuffer->width,
+		  (unsigned long long)framebuffer->height,
+		  (unsigned long long)framebuffer->pitch, framebuffer->bpp,
+		  framebuffer->address);
 
 	gdt_init();
-	klog("initialized GDT for BSP (cpu0)");
 
 	idt_init();
-	klog("initialized IDT");
 
+	if (memmap_request.response == NULL) {
+		kpanic(NULL, "no memory map");
+	}
+
+	if (hhdm_request.response != NULL) {
+		hhdm_offset = hhdm_request.response->offset;
+		klogv("hhdm offset=%p", (void *)hhdm_offset);
+	} else {
+		kpanic(NULL, "no HHDM offset");
+	}
+
+	if (executable_address_request.response == NULL) {
+		kpanic(NULL, "no executable address response");
+	}
+
+	if (paging_mode_request.response == NULL ||
+		paging_mode_request.response->mode != LIMINE_PAGING_MODE_X86_64_4LVL) {
+		kpanic(NULL, "expected Limine x86_64 4-level paging mode");
+	}
+	klogv("limine paging mode=%llu",
+		  (unsigned long long)paging_mode_request.response->mode);
+
+	pfndb_init(memmap_request.response);
+
+	pmm_init();
+	paging_init(memmap_request.response, framebuffer,
+				executable_address_request.response);
+	kheap_init();
+
+	klog("--------------------------------------------------");
+	klog("kernel v" ALIX_VERSION " initialized.");
 	hlt();
 }

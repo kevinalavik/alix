@@ -3,6 +3,9 @@
 
 #include <stdint.h>
 
+#define X86_MSR_EFER 0xc0000080u
+#define X86_EFER_NXE (1ull << 11)
+
 static inline void cli()
 {
 	__asm__ volatile("cli" ::: "memory");
@@ -95,6 +98,19 @@ static inline void write_cr4(uint64_t cr4)
 static inline void write_cr3(uint64_t cr3)
 {
 	__asm__ volatile("mov %0, %%cr3" ::"r"(cr3) : "memory");
+}
+
+static inline void invlpg(uint64_t virt)
+{
+	__asm__ volatile("invlpg (%0)" ::"r"(virt) : "memory");
+}
+
+static inline void cpuid(uint32_t leaf, uint32_t subleaf, uint32_t *eax,
+						 uint32_t *ebx, uint32_t *ecx, uint32_t *edx)
+{
+	__asm__ volatile("cpuid"
+					 : "=a"(*eax), "=b"(*ebx), "=c"(*ecx), "=d"(*edx)
+					 : "a"(leaf), "c"(subleaf));
 }
 
 static inline uint64_t rdmsr(uint32_t msr)

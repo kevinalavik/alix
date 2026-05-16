@@ -52,7 +52,7 @@ static void klog_emit(const struct klog_record *rec)
 
 	ksnprintf(
 		line, sizeof(line),
-		"[%llu.%03llu] %s: ", (unsigned long long)(rec->time_us / 1000000ULL),
+		"[%5llu.%03llu] %s: ", (unsigned long long)(rec->time_us / 1000000ULL),
 		(unsigned long long)((rec->time_us / 1000ULL) % 1000ULL), rec->ns);
 	pos = strlen(line);
 
@@ -94,9 +94,12 @@ void klog_init(void)
 	klog_ready = true;
 }
 
-void kvlog_write(const char *ns, const char *fmt, va_list ap)
+void kvlog_write_level(int level, const char *ns, const char *fmt, va_list ap)
 {
 	struct klog_record rec;
+
+	if (level > CONFIG_KLOG_VERBOSITY)
+		return;
 
 	if (ns == NULL || ns[0] == '\0')
 		ns = "kernel";
@@ -113,11 +116,25 @@ void kvlog_write(const char *ns, const char *fmt, va_list ap)
 	klog_emit(&rec);
 }
 
+void kvlog_write(const char *ns, const char *fmt, va_list ap)
+{
+	kvlog_write_level(KLOG_LEVEL_INFO, ns, fmt, ap);
+}
+
+void klog_write_level(int level, const char *ns, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	kvlog_write_level(level, ns, fmt, ap);
+	va_end(ap);
+}
+
 void klog_write(const char *ns, const char *fmt, ...)
 {
 	va_list ap;
 
 	va_start(ap, fmt);
-	kvlog_write(ns, fmt, ap);
+	kvlog_write_level(KLOG_LEVEL_INFO, ns, fmt, ap);
 	va_end(ap);
 }

@@ -61,14 +61,37 @@ limine-binary/limine:
 		LDFLAGS="$(HOST_LDFLAGS)" \
 		LIBS="$(HOST_LIBS)"
 
-kernel/.deps-obtained:
+kernel/.deps-obtained kernel/kconfiglib/kconfiglib.py kernel/kconfiglib/menuconfig.py:
 	./kernel/build/get-deps
 
-.PHONY: kernel
-kernel: kernel/.deps-obtained
-	$(MAKE) -C kernel
+.PHONY: FORCE
+FORCE:
 
-$(IMAGE_NAME).iso: limine-binary/limine kernel
+kernel/bin/alix: FORCE kernel/.deps-obtained kernel/kconfiglib/kconfiglib.py
+	$(MAKE) -C kernel bin/alix
+
+.PHONY: kernel
+kernel: kernel/bin/alix
+
+.PHONY: menuconfig
+menuconfig: kernel/.deps-obtained kernel/kconfiglib/menuconfig.py
+	$(MAKE) -C kernel menuconfig
+
+.PHONY: defconfig
+defconfig: kernel/.deps-obtained kernel/kconfiglib/kconfiglib.py
+	$(MAKE) -C kernel defconfig
+
+ISO_DEPS := \
+	limine.conf \
+	limine-binary/limine \
+	limine-binary/limine-bios.sys \
+	limine-binary/limine-bios-cd.bin \
+	limine-binary/limine-uefi-cd.bin \
+	limine-binary/BOOTX64.EFI \
+	limine-binary/BOOTIA32.EFI \
+	kernel/bin/alix
+
+$(IMAGE_NAME).iso: $(ISO_DEPS)
 	rm -rf iso_root
 	mkdir -p iso_root/boot
 	cp -v kernel/bin/alix iso_root/boot/
@@ -85,7 +108,7 @@ $(IMAGE_NAME).iso: limine-binary/limine kernel
 	./limine-binary/limine bios-install $(IMAGE_NAME).iso
 	rm -rf iso_root
 
-$(IMAGE_NAME).hdd: limine-binary/limine kernel
+$(IMAGE_NAME).hdd: $(ISO_DEPS)
 	rm -f $(IMAGE_NAME).hdd
 	dd if=/dev/zero bs=1M count=0 seek=64 of=$(IMAGE_NAME).hdd
 	PATH=$$PATH:/usr/sbin:/sbin sgdisk $(IMAGE_NAME).hdd -n 1:2048 -t 1:ef00 -m 1

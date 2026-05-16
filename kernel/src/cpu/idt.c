@@ -107,6 +107,26 @@ void idt_set_desc(idt_entry_t *desc, uint64_t offset, uint8_t type, uint8_t dpl)
 	desc->reserved = 0;
 }
 
+static uint64_t idt_desc_base(const idt_entry_t *desc)
+{
+	return ((uint64_t)desc->base_low) | ((uint64_t)desc->base_mid << 16) |
+		   ((uint64_t)desc->base_high << 32);
+}
+
+static void idt_dump(void)
+{
+	klogvv("idtr base=0x%016llx limit=0x%04x", (unsigned long long)idtr.base,
+		   idtr.limit);
+
+	for (uint32_t v = 0; v < 256; v++) {
+		idt_entry_t *desc = &idt[v];
+		klogvv("vec=%03u base=0x%016llx cs=0x%04x ist=%u type=0x%x dpl=%u p=%u",
+			   v, (unsigned long long)idt_desc_base(desc), desc->codeseg,
+			   desc->ist & 0x7, desc->flags & 0xf, (desc->flags >> 5) & 0x3,
+			   !!(desc->flags & 0x80));
+	}
+}
+
 void idt_init(void)
 {
 	for (int v = 0; v < 32; v++)
@@ -116,7 +136,9 @@ void idt_init(void)
 		idt_set_desc(&idt[v], (uint64_t)isr_stubs[v], IDT_INTERRUPT, 0);
 
 	idt_set_desc(&idt[0x80], (uint64_t)isr_stubs[0x80], IDT_TRAP, 3);
+	idt_dump();
 	__asm__ volatile("lidt %0" ::"m"(idtr));
+	klog("loaded: 256 vectors");
 }
 
 interrupt_frame_t *isr_common_handler(interrupt_frame_t *frame)
