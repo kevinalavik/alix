@@ -97,10 +97,8 @@ static void panic_dump_backtrace(interrupt_frame_t *regs)
 	if (regs == NULL)
 		return;
 
-	/* Entry #0 is the RIP at the point of the fault */
 	panic_log_trace(0, regs->rip);
 
-	/* Walk the rbp chain from the interrupted context upward */
 	const struct panic_frame *frame =
 		(const struct panic_frame *)(uintptr_t)regs->rbp;
 	const struct panic_frame *prev = NULL;
@@ -154,9 +152,6 @@ void vkpanic(interrupt_frame_t *regs, const char *fmt, va_list ap)
 {
 	cli();
 
-	if (regs == NULL)
-		regs = __builtin_frame_address(0);
-
 	panic_log_message(fmt, ap);
 	panic_dump_regs(regs);
 	panic_dump_backtrace(regs);
@@ -167,13 +162,110 @@ void vkpanic(interrupt_frame_t *regs, const char *fmt, va_list ap)
 		hlt();
 }
 
-void kpanic(interrupt_frame_t *regs, const char *fmt, ...)
+/*
+ * regs != NULL path: a real interrupt frame was passed in, so we just
+ * forward the variadic args to vkpanic normally. The naked trampoline
+ * below calls this directly after the testq/jnz check.
+ */
+void kpanic_with_regs(interrupt_frame_t *regs, const char *fmt, ...)
 {
 	va_list ap;
 
 	va_start(ap, fmt);
-	if (regs == NULL)
-		regs = __builtin_frame_address(0);
 	vkpanic(regs, fmt, ap);
 	va_end(ap);
+}
+
+/*
+ * kpanic — public entry point.
+ *
+ * regs != NULL: tail-call kpanic_with_regs, which sets up va_list properly.
+ * regs == NULL: capture the full register state onto the stack as an
+ *               interrupt_frame_t and call vkpanic directly.
+ *
+ * Stack at entry (before any pushes):
+ *   rsp+0  = retaddr
+ *   rdi    = regs (NULL here)
+ *   rsi    = fmt
+ *   rdx/rcx/r8/r9 = first four variadic args
+ *
+ * After pushq rax (spill):        rsp+0=rax_spill, rsp+8=retaddr
+ * After pushq ss:                 rsp+0=ss, rsp+8=rax_spill, rsp+16=retaddr
+ *   caller rsp = retaddr+8 = rsp+24
+ * After pushq caller_rsp:         rsp+0=caller_rsp, ..., rsp+24=retaddr
+ * After pushfq:                   rsp+0=rflags, ..., rsp+32=retaddr
+ * After pushq cs:                 rsp+0=cs, ..., rsp+40=retaddr -> rip
+ *
+ * rax recovery: 21 pushes * 8 = 168 bytes above rsp at that point.
+ */
+__attribute__((naked)) void kpanic(interrupt_frame_t *regs, const char *fmt,
+								   ...)
+{
+	__asm__ volatile("testq  %%rdi, %%rdi\n\t"
+					 "jnz    1f\n\t"
+
+					 "pushq  %%rax\n\t"
+
+					 "xorq   %%rax, %%rax\n\t"
+					 "movw   %%ss, %%ax\n\t"
+					 "pushq  %%rax\n\t"
+
+					 "leaq   24(%%rsp), %%rax\n\t"
+					 "pushq  %%rax\n\t"
+
+					 "pushfq\n\t"
+
+					 "xorq   %%rax, %%rax\n\t"
+					 "movw   %%cs, %%ax\n\t"
+					 "pushq  %%rax\n\t"
+
+					 "movq   40(%%rsp), %%rax\n\t"
+					 "pushq  %%rax\n\t"
+
+					 "pushq  $0\n\t"
+					 "pushq  $0\n\t"
+
+					 "pushq  %%r15\n\t"
+					 "pushq  %%r14\n\t"
+					 "pushq  %%r13\n\t"
+					 "pushq  %%r12\n\t"
+					 "pushq  %%r11\n\t"
+					 "pushq  %%r10\n\t"
+					 "pushq  %%r9\n\t"
+					 "pushq  %%r8\n\t"
+
+					 "pushq  %%rsi\n\t"
+					 "pushq  %%rdi\n\t"
+					 "pushq  %%rbp\n\t"
+					 "pushq  %%rdx\n\t"
+					 "pushq  %%rcx\n\t"
+					 "pushq  %%rbx\n\t"
+
+					 "movq   168(%%rsp), %%rax\n\t"
+					 "pushq  %%rax\n\t"
+
+					 "movq   %%cr4, %%rax\n\t"
+					 "pushq  %%rax\n\t"
+					 "movq   %%cr3, %%rax\n\t"
+					 "pushq  %%rax\n\t"
+					 "movq   %%cr2, %%rax\n\t"
+					 "pushq  %%rax\n\t"
+					 "movq   %%cr0, %%rax\n\t"
+					 "pushq  %%rax\n\t"
+
+					 "xorq   %%rax, %%rax\n\t"
+					 "movw   %%ds, %%ax\n\t"
+					 "pushq  %%rax\n\t"
+					 "xorq   %%rax, %%rax\n\t"
+					 "movw   %%es, %%ax\n\t"
+					 "pushq  %%rax\n\t"
+
+					 "movq   %%rsp, %%rdi\n\t"
+					 "call   vkpanic\n\t"
+
+					 "1:\n\t"
+					 "jmp    kpanic_with_regs\n\t"
+					 :
+					 :
+					 :);
 }
