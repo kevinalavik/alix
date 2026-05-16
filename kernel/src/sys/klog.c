@@ -4,8 +4,10 @@
 #include <stdint.h>
 #include <stdarg.h>
 #include <api/time.h>
+#include <dev/uart.h>
 #include <lib/kprintf.h>
 #include <lib/string.h>
+#include <sys/alix.h>
 
 static struct klog_record klog_ring[KLOG_RING_SIZE];
 
@@ -14,12 +16,53 @@ static size_t klog_count;
 static uint64_t klog_next_seq;
 static bool klog_ready;
 
+static void klog_buf_putc(char *buf, size_t bufsz, size_t *pos, char c)
+{
+	if (*pos + 1 < bufsz)
+		buf[*pos] = c;
+
+	(*pos)++;
+}
+
+static void klog_buf_puts_crlf(char *buf, size_t bufsz, size_t *pos,
+							   const char *s)
+{
+	bool prev_was_cr = false;
+
+	if (s == NULL)
+		s = "(null)";
+
+	while (*s != '\0') {
+		char c = *s++;
+
+		if (c == '\n' && !prev_was_cr)
+			klog_buf_putc(buf, bufsz, pos, '\r');
+
+		klog_buf_putc(buf, bufsz, pos, c);
+		prev_was_cr = (c == '\r');
+	}
+}
+
 static void klog_emit(const struct klog_record *rec)
 {
-	kprintf("[%llu.%03llu] %s: %s\n",
-			(unsigned long long)(rec->time_us / 1000000ULL),
-			(unsigned long long)((rec->time_us / 1000ULL) % 1000ULL), rec->ns,
-			rec->msg);
+	char line[512];
+	size_t pos = 0;
+
+	ksnprintf(line, sizeof(line), "[%llu.%03llu] %s: ",
+			  (unsigned long long)(rec->time_us / 1000000ULL),
+			  (unsigned long long)((rec->time_us / 1000ULL) % 1000ULL), rec->ns);
+	pos = strlen(line);
+
+	klog_buf_puts_crlf(line, sizeof(line), &pos, rec->msg);
+	klog_buf_puts_crlf(line, sizeof(line), &pos, "\r\n");
+
+	if (pos >= sizeof(line))
+		line[sizeof(line) - 1] = '\0';
+	else
+		line[pos] = '\0';
+
+	uart_wstr(line);
+	flanterm_write(ft_ctx, line, strlen(line));
 }
 
 static void klog_ring_push(uint64_t time_us, const char *ns, const char *msg)

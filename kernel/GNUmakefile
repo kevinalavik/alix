@@ -73,6 +73,7 @@ override CFLAGS += \
 override CPPFLAGS := \
     -I src \
     -I limine-protocol/include \
+    -I flanterm/src \
     -isystem freestnd-c-hdrs/include \
     $(CPPFLAGS) \
     -MMD \
@@ -91,7 +92,7 @@ override LDFLAGS += \
     --gc-sections \
     -T build/linker.ld
 
-override SRCFILES := $(shell find -L src cc-runtime/src -type f 2>/dev/null | LC_ALL=C sort)
+override SRCFILES := $(shell find -L src cc-runtime/src flanterm/src -type f 2>/dev/null | LC_ALL=C sort)
 override CFILES := $(filter %.c,$(SRCFILES))
 override ASFILES := $(filter %.S,$(SRCFILES))
 override NASMFILES := $(filter %.asm,$(SRCFILES))

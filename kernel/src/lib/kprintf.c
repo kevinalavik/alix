@@ -1,8 +1,9 @@
 #include <lib/kprintf.h>
-
 #include <stdbool.h>
 #include <stdint.h>
 #include <dev/uart.h>
+#include <flanterm.h>
+#include <sys/alix.h>
 
 static void buf_putc(char *buf, size_t bufsz, size_t *pos, char c)
 {
@@ -205,8 +206,7 @@ int kvsnprintf(char *buf, size_t bufsz, const char *fmt, va_list ap)
 		}
 
 		switch (*fmt) {
-		case 's':
-		{
+		case 's': {
 			const char *s = va_arg(ap, const char *);
 			size_t len = buf_strlen(s);
 
@@ -218,8 +218,7 @@ int kvsnprintf(char *buf, size_t bufsz, const char *fmt, va_list ap)
 			break;
 		}
 
-		case 'c':
-		{
+		case 'c': {
 			char ch = (char)va_arg(ap, int);
 
 			if (!left_align)
@@ -331,6 +330,7 @@ void vkprintf(const char *fmt, va_list ap)
 
 	kvsnprintf(buf, sizeof(buf), fmt, ap);
 	uart_wstr(buf);
+	flanterm_write(ft_ctx, buf, strlen(buf));
 }
 
 void kprintf(const char *fmt, ...)

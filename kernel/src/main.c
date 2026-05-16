@@ -8,15 +8,41 @@
 #include <api/time.h>
 #include <sys/liminereq.h>
 #include <sys/alix.h>
-#define KLOG_NS "kernel"
+#define KLOG_NS "alix"
 #include <sys/klog.h>
 #include <cpu/gdt.h>
+#include <flanterm.h>
+#include <flanterm_backends/fb.h>
+#include <lib/kprintf.h>
 
 uint64_t boot_tsc = 0;
+struct flanterm_context *ft_ctx = NULL;
 
 void kmain(void)
 {
 	if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
+		nointloop();
+	}
+
+	if (framebuffer_request.response == NULL ||
+		framebuffer_request.response->framebuffer_count < 1) {
+		klog("error: no framebuffer");
+		nointloop(); /* no point in continuing, this is a modern OS we neeeed graphics :^) */
+	}
+
+	struct limine_framebuffer *framebuffer =
+		framebuffer_request.response->framebuffers[0];
+
+	ft_ctx = flanterm_fb_init(
+		NULL, NULL, framebuffer->address, framebuffer->width,
+		framebuffer->height, framebuffer->pitch, framebuffer->red_mask_size,
+		framebuffer->red_mask_shift, framebuffer->green_mask_size,
+		framebuffer->green_mask_shift, framebuffer->blue_mask_size,
+		framebuffer->blue_mask_shift, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+		NULL, 0, 0, 1, 0, 0, 0, 0);
+
+	if (ft_ctx == NULL) {
+		klog("error: failed to initialize flanterm.");
 		nointloop();
 	}
 
@@ -34,25 +60,6 @@ void kmain(void)
 
 	gdt_init();
 
-	if (framebuffer_request.response == NULL ||
-		framebuffer_request.response->framebuffer_count < 1) {
-		klog("error: no framebuffer");
-		nointloop(); /* no point in continuing, this is a modern OS we neeeed graphics :^) */
-	}
-
-	struct limine_framebuffer *framebuffer =
-		framebuffer_request.response->framebuffers[0];
-
-	volatile uint32_t *fb_ptr = framebuffer->address;
-
-	for (size_t y = 0; y < framebuffer->height; y++) {
-		for (size_t x = 0; x < framebuffer->width; x++) {
-			uint32_t nX = x * 255 / framebuffer->width;
-			uint32_t nY = y * 255 / framebuffer->height;
-
-			fb_ptr[y * (framebuffer->pitch / 4) + x] = (nY << 8) | nX;
-		}
-	}
-
+	kprintf("Welcome to Alix!\r\n");
 	hlt();
 }
