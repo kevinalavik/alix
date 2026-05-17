@@ -2,479 +2,588 @@
 #define KLOG_NS "vmm"
 #include <log/klog.h>
 #include <debug/panic.h>
-#include <cpu/instr.h>
 #include <string.h>
 
-#define PTE_PRESENT (1ull << 0)
-#define PTE_WRITE (1ull << 1)
-#define PTE_USER (1ull << 2)
-#define PTE_GLOBAL (1ull << 8)
-#define PTE_NX (1ull << 63)
-#define PTE_ADDR_MASK 0x000ffffffffff000ull
-
-typedef uint64_t pte_t;
-
-static vmm_space_t kernel_space;
-static vmm_space_t *current_space;
-static _Bool nx_enabled;
-static uint64_t page_table_count;
-
-static vm_area_t kernel_image_area;
-static vm_area_t hhdm_area;
-static vm_area_t framebuffer_area;
-
-static inline uint16_t pml4_index(uint64_t virt)
+static vad_t *vad_alloc(uint64_t start, uint64_t end, uint64_t flags)
 {
-	return (virt >> 39) & 0x1ff;
+	vad_t *vad = kzalloc(sizeof(vad_t));
+
+	if (!vad)
+		return NULL;
+
+	vad->start = start;
+	vad->end = end;
+	vad->flags = flags;
+	vad->next = NULL;
+	return vad;
 }
 
-static inline uint16_t pdpt_index(uint64_t virt)
+static void vad_free(vad_t *vad)
 {
-	return (virt >> 30) & 0x1ff;
+	if (vad)
+		kfree(vad);
 }
 
-static inline uint16_t pd_index(uint64_t virt)
+static vad_t *vad_clone_segment(vad_t *src, uint64_t start, uint64_t end)
 {
-	return (virt >> 21) & 0x1ff;
+	return vad_alloc(start, end, src->flags);
 }
 
-static inline uint16_t pt_index(uint64_t virt)
+static void vad_insert(vas_t *vas, vad_t *vad)
 {
-	return (virt >> 12) & 0x1ff;
+	vad_t **cur = &vas->list_head;
+
+	while (*cur && (*cur)->start < vad->start)
+		cur = &(*cur)->next;
+
+	vad->next = *cur;
+	*cur = vad;
 }
 
-static inline pte_t *table_virt(uint64_t phys)
+static void vad_remove_range(vas_t *vas, uint64_t start, uint64_t end)
 {
-	return PHYS_TO_VIRT(phys & PTE_ADDR_MASK);
-}
+	vad_t *old = vas->list_head;
+	vad_t *new_head = NULL;
+	vad_t **tail = &new_head;
 
-static const char *prot_name(uint64_t prot, char buf[8])
-{
-	buf[0] = (prot & VMM_PROT_READ) ? 'r' : '-';
-	buf[1] = (prot & VMM_PROT_WRITE) ? 'w' : '-';
-	buf[2] = (prot & VMM_PROT_EXEC) ? 'x' : '-';
-	buf[3] = (prot & VMM_PROT_USER) ? 'u' : 'k';
-	buf[4] = (prot & VMM_PROT_GLOBAL) ? 'g' : '-';
-	buf[5] = '\0';
-	return buf;
-}
+	while (old) {
+		vad_t *next = old->next;
 
-static void log_range_v(const char *what, uint64_t virt, uint64_t phys,
-						uint64_t size, uint64_t prot)
-{
-	char pbuf[8];
+		if (old->end <= start || old->start >= end) {
+			old->next = NULL;
+			*tail = old;
+			tail = &old->next;
+			old = next;
+			continue;
+		}
 
-	klogv("%s: virt=0x%llx phys=0x%llx size=0x%llx prot=%s", what,
-		  (unsigned long long)virt, (unsigned long long)phys,
-		  (unsigned long long)size, prot_name(prot, pbuf));
-}
+		if (old->start < start) {
+			vad_t *left = vad_clone_segment(old, old->start, start);
+			if (!left)
+				kpanic(NULL, "vmm: failed to split left VAD");
+			*tail = left;
+			tail = &left->next;
+		}
 
-static void log_range_vv(const char *what, uint64_t virt, uint64_t phys,
-						 uint64_t size, uint64_t prot)
-{
-	char pbuf[8];
+		if (old->end > end) {
+			vad_t *right = vad_clone_segment(old, end, old->end);
+			if (!right)
+				kpanic(NULL, "vmm: failed to split right VAD");
+			*tail = right;
+			tail = &right->next;
+		}
 
-	klogvv("%s: virt=0x%llx phys=0x%llx size=0x%llx prot=%s", what,
-		   (unsigned long long)virt, (unsigned long long)phys,
-		   (unsigned long long)size, prot_name(prot, pbuf));
-}
-
-static void enable_nx_if_available(void)
-{
-	uint32_t eax;
-	uint32_t ebx;
-	uint32_t ecx;
-	uint32_t edx;
-
-	cpuid(0x80000001u, 0, &eax, &ebx, &ecx, &edx);
-	if (!(edx & (1u << 20))) {
-		klogv("nx: unsupported");
-		return;
+		vad_free(old);
+		old = next;
 	}
 
-	wrmsr(X86_MSR_EFER, rdmsr(X86_MSR_EFER) | X86_EFER_NXE);
-	nx_enabled = 1;
-	klogv("nx: enabled");
+	*tail = NULL;
+	vas->list_head = new_head;
 }
 
-static uint64_t prot_to_pte(uint64_t prot)
+static uint64_t vas_find_free(vas_t *vas, uint64_t hint, size_t length)
 {
-	uint64_t flags = PTE_PRESENT;
+	uint64_t base = PAGE_ALIGN_UP(hint);
+	uint64_t end = base + length;
+	vad_t *vad;
 
-	if (prot & VMM_PROT_WRITE)
-		flags |= PTE_WRITE;
-	if (prot & VMM_PROT_USER)
-		flags |= PTE_USER;
-	if (prot & VMM_PROT_GLOBAL)
-		flags |= PTE_GLOBAL;
-	if (nx_enabled && !(prot & VMM_PROT_EXEC))
-		flags |= PTE_NX;
-
-	return flags;
-}
-
-static uint64_t alloc_table(void)
-{
-	page_t *page = pmm_alloc_page();
-
-	if (!page)
-		return 0;
-
-	uint64_t phys = page_to_phys(page);
-	memset(PHYS_TO_VIRT(phys), 0, PAGE_SIZE);
-	page_table_count++;
-	klogvv("page table alloc: phys=0x%llx count=%llu", (unsigned long long)phys,
-		   (unsigned long long)page_table_count);
-	return phys;
-}
-
-static pte_t *next_table(pte_t *table, uint16_t index, uint64_t prot,
-						 _Bool create)
-{
-	pte_t entry = table[index];
-
-	if (entry & PTE_PRESENT)
-		return table_virt(entry);
-
-	if (!create)
-		return NULL;
-
-	uint64_t phys = alloc_table();
-	if (!phys)
-		return NULL;
-
-	table[index] = phys | PTE_PRESENT | PTE_WRITE |
-				   ((prot & VMM_PROT_USER) ? PTE_USER : 0);
-	return table_virt(phys);
-}
-
-static pte_t *lookup_leaf(vmm_space_t *space, uint64_t virt, _Bool create,
-						  uint64_t prot)
-{
-	pte_t *pml4 = table_virt(space->pml4_phys);
-	pte_t *pdpt = next_table(pml4, pml4_index(virt), prot, create);
-	if (!pdpt)
-		return NULL;
-
-	pte_t *pd = next_table(pdpt, pdpt_index(virt), prot, create);
-	if (!pd)
-		return NULL;
-
-	pte_t *pt = next_table(pd, pd_index(virt), prot, create);
-	if (!pt)
-		return NULL;
-
-	return &pt[pt_index(virt)];
-}
-
-static int map_kernel_segment(const char *name, uint64_t virt_start,
-							  uint64_t virt_end, uint64_t kernel_phys_base,
-							  uint64_t kernel_virt_base, uint64_t prot)
-{
-	uint64_t start = PAGE_ALIGN_DOWN(virt_start);
-	uint64_t end = PAGE_ALIGN_UP(virt_end);
-
-	if (end <= start)
-		return 0;
-
-	log_range_v(name, start, kernel_phys_base + (start - kernel_virt_base),
-				end - start, prot);
-	return vmm_map_range(&kernel_space, start,
-						 kernel_phys_base + (start - kernel_virt_base),
-						 end - start, prot);
-}
-
-static uint64_t memmap_top(struct limine_memmap_response *memmap)
-{
-	uint64_t top = 0;
-
-	for (uint64_t i = 0; i < memmap->entry_count; i++) {
-		struct limine_memmap_entry *e = memmap->entries[i];
-		uint64_t end = e->base + e->length;
-		if (end > top)
-			top = end;
+	for (vad = vas->list_head; vad; vad = vad->next) {
+		if (end <= vad->start)
+			break;
+		if (base < vad->end) {
+			base = PAGE_ALIGN_UP(vad->end);
+			end = base + length;
+		}
 	}
 
-	return PAGE_ALIGN_UP(top);
+	if (end > VAS_USER_END || end < base)
+		return 0;
+
+	return base;
 }
 
-static int map_hhdm(struct limine_memmap_response *memmap)
+static int vas_overlaps(vas_t *vas, uint64_t start, uint64_t end)
 {
-	for (uint64_t i = 0; i < memmap->entry_count; i++) {
-		struct limine_memmap_entry *e = memmap->entries[i];
-		uint64_t start = PAGE_ALIGN_DOWN(e->base);
-		uint64_t end = PAGE_ALIGN_UP(e->base + e->length);
+	for (vad_t *vad = vas->list_head; vad; vad = vad->next) {
+		if (vad->start >= end)
+			break;
+		if (vad->end > start)
+			return 1;
+	}
 
-		if (end <= start)
+	return 0;
+}
+
+static void uncommit_range(vas_t *vas, uint64_t start, uint64_t end)
+{
+	for (uint64_t va = start; va < end; va += PAGE_SIZE) {
+		uint64_t phys = paging_virt_to_phys(vas, va);
+		page_t *page;
+
+		if (!phys) {
+			paging_unmap_page(vas, va);
+			continue;
+		}
+
+		page = phys_to_page(PAGE_ALIGN_DOWN(phys));
+		paging_unmap_page(vas, va);
+
+		if (!page || PageReserved(page) || PagePoisoned(page))
 			continue;
 
-		log_range_vv("map hhdm", hhdm_offset + start, start, end - start,
-					 VMM_PROT_READ | VMM_PROT_WRITE | VMM_PROT_GLOBAL);
-		if (vmm_map_range(
-				&kernel_space, hhdm_offset + start, start, end - start,
-				VMM_PROT_READ | VMM_PROT_WRITE | VMM_PROT_GLOBAL) != 0)
+		pmm_free(page);
+	}
+}
+
+static int commit_anon(vas_t *vas, vad_t *vad)
+{
+	uint64_t flags = vad->flags & VAD_PROT_MASK;
+
+	for (uint64_t va = vad->start; va < vad->end; va += PAGE_SIZE) {
+		page_t *page = pmm_alloc_page();
+		uint64_t phys;
+
+		if (!page)
 			return -1;
+
+		phys = page_to_phys(page);
+		memset(PHYS_TO_VIRT(phys), 0, PAGE_SIZE);
+
+		if (paging_map_page(vas, va, phys, flags) != 0) {
+			pmm_free(page);
+			return -1;
+		}
 	}
 
 	return 0;
 }
 
-static int map_pfndb(void)
+static int remap_page_flags(vas_t *vas, uint64_t va, uint64_t new_flags)
 {
-	uint64_t phys = VIRT_TO_PHYS((uint64_t)pfndb_getdb());
-	uint64_t start = PAGE_ALIGN_DOWN(phys);
-	uint64_t end = PAGE_ALIGN_UP(phys + (pfndb_getmax() + 1) * sizeof(page_t));
+	uint64_t phys = paging_virt_to_phys(vas, va);
 
-	log_range_v("map pfndb", hhdm_offset + start, start, end - start,
-				VMM_PROT_READ | VMM_PROT_WRITE | VMM_PROT_GLOBAL);
-	return vmm_map_range(&kernel_space, hhdm_offset + start, start, end - start,
-						 VMM_PROT_READ | VMM_PROT_WRITE | VMM_PROT_GLOBAL);
-}
-
-static int map_framebuffer(struct limine_framebuffer *framebuffer)
-{
-	if (!framebuffer || !framebuffer->address)
+	if (!phys)
 		return 0;
 
-	uint64_t virt = (uint64_t)framebuffer->address;
-	uint64_t size = framebuffer->pitch * framebuffer->height;
-	uint64_t start = PAGE_ALIGN_DOWN(virt);
-	uint64_t end = PAGE_ALIGN_UP(virt + size);
-	uint64_t phys = (virt >= hhdm_offset) ? VIRT_TO_PHYS(start) : start;
-
-	log_range_v("map framebuffer", start, phys, end - start,
-				VMM_PROT_READ | VMM_PROT_WRITE | VMM_PROT_GLOBAL);
-	return vmm_map_range(&kernel_space, start, phys, end - start,
-						 VMM_PROT_READ | VMM_PROT_WRITE | VMM_PROT_GLOBAL);
+	paging_unmap_page(vas, va);
+	return paging_map_page(vas, va, PAGE_ALIGN_DOWN(phys), new_flags);
 }
 
-static void add_static_area(vm_area_t *area, uint64_t start, uint64_t end,
-							uint64_t prot, uint64_t flags)
+vas_t *vas_create(ptable_t *pt)
 {
-	area->start = start;
-	area->end = end;
-	area->prot = prot;
-	area->flags = flags;
-	area->offset = 0;
-	area->object = NULL;
-	area->prev = NULL;
-	area->next = NULL;
+	vas_t *vas = kzalloc(sizeof(vas_t));
 
-	klogvv("vad add: [0x%llx,0x%llx) prot=0x%llx flags=0x%llx",
-		   (unsigned long long)start, (unsigned long long)end,
-		   (unsigned long long)prot, (unsigned long long)flags);
-	if (vmm_add_area(&kernel_space, area) != 0)
-		kpanic(NULL, "vmm: VAD overlap for [0x%llx, 0x%llx)",
-			   (unsigned long long)start, (unsigned long long)end);
+	if (!vas)
+		return NULL;
+
+	vas->pml4 = pt ? pt : ptable_create();
+	vas->list_head = NULL;
+	vas->user_start = VAS_USER_START;
+
+	if (!vas->pml4) {
+		kfree(vas);
+		return NULL;
+	}
+
+	return vas;
 }
 
-vmm_space_t *vmm_kernel_space(void)
+void vas_destroy(vas_t *vas)
 {
-	return &kernel_space;
+	vad_t *vad;
+
+	if (!vas || vas == kernel_vas)
+		return;
+
+	vad = vas->list_head;
+	while (vad) {
+		vad_t *next = vad->next;
+
+		uncommit_range(vas, vad->start, vad->end);
+		vad_free(vad);
+		vad = next;
+	}
+
+	ptable_destroy(vas->pml4);
+	kfree(vas);
 }
 
-vmm_space_t *vmm_current_space(void)
+uint64_t vas_map_anon(vas_t *vas, uint64_t hint, size_t length, uint64_t flags)
 {
-	return current_space;
+	uint64_t base;
+	uint64_t end;
+	vad_t *vad;
+
+	if (!vas || !length)
+		return 0;
+
+	length = PAGE_ALIGN_UP(length);
+
+	if (flags & VAD_FIXED) {
+		base = PAGE_ALIGN_DOWN(hint);
+		end = base + length;
+		if (end > VAS_USER_END || end < base)
+			return 0;
+		if (vas_overlaps(vas, base, end))
+			return 0;
+	} else {
+		uint64_t search_hint = hint ? hint : vas->user_start;
+		base = vas_find_free(vas, search_hint, length);
+		if (!base)
+			return 0;
+	}
+
+	vad = vad_alloc(base, base + length, flags | VAD_ANONYMOUS | VAD_MAPPED);
+	if (!vad)
+		return 0;
+
+	if (commit_anon(vas, vad) != 0) {
+		uncommit_range(vas, base, base + length);
+		vad_free(vad);
+		return 0;
+	}
+
+	vad_insert(vas, vad);
+	vas->user_start = base + length;
+	return base;
 }
 
-void vmm_switch(vmm_space_t *space)
+uint64_t vas_map_phys(vas_t *vas, uint64_t hint, uint64_t phys, size_t length,
+					  uint64_t flags)
 {
-	if (!space || !space->pml4_phys)
-		kpanic(NULL, "vmm: invalid address space switch");
+	uint64_t base;
+	uint64_t end;
+	vad_t *vad;
 
-	klogvv("switch address space: pml4=0x%llx",
-		   (unsigned long long)space->pml4_phys);
-	write_cr3(space->pml4_phys);
-	current_space = space;
+	if (!vas || !length)
+		return 0;
+
+	length = PAGE_ALIGN_UP(length);
+	phys = PAGE_ALIGN_DOWN(phys);
+
+	if (flags & VAD_FIXED) {
+		base = PAGE_ALIGN_DOWN(hint);
+		end = base + length;
+		if (end > VAS_USER_END || end < base)
+			return 0;
+		if (vas_overlaps(vas, base, end))
+			return 0;
+	} else {
+		uint64_t search_hint = hint ? hint : vas->user_start;
+		base = vas_find_free(vas, search_hint, length);
+		if (!base)
+			return 0;
+	}
+
+	for (size_t off = 0; off < length; off += PAGE_SIZE) {
+		uint64_t map_phys = phys + off;
+		page_t *page = phys_to_page(map_phys);
+
+		if (page && !PageReserved(page) && !PagePoisoned(page))
+			page_ref_inc(page);
+
+		if (paging_map_page(vas, base + off, map_phys, flags & VAD_PROT_MASK) !=
+			0) {
+			uncommit_range(vas, base, base + off);
+			return 0;
+		}
+	}
+
+	vad = vad_alloc(base, base + length, (flags & ~VAD_ANONYMOUS) | VAD_MAPPED);
+	if (!vad) {
+		uncommit_range(vas, base, base + length);
+		return 0;
+	}
+
+	vad_insert(vas, vad);
+	return base;
 }
 
-int vmm_map_page(vmm_space_t *space, uint64_t virt, uint64_t phys,
-				 uint64_t prot)
+int vas_unmap(vas_t *vas, uint64_t start, size_t length)
 {
-	if (!space || !space->pml4_phys)
-		return -1;
-	if ((virt & (PAGE_SIZE - 1)) || (phys & (PAGE_SIZE - 1)))
-		return -1;
+	uint64_t end;
 
-	pte_t *leaf = lookup_leaf(space, virt, 1, prot);
-	if (!leaf)
-		return -1;
+	if (!vas || !length)
+		return 0;
 
-	*leaf = (phys & PTE_ADDR_MASK) | prot_to_pte(prot);
-	if (space == current_space)
-		invlpg(virt);
+	start = PAGE_ALIGN_DOWN(start);
+	length = PAGE_ALIGN_UP(length);
+	end = start + length;
+
+	for (vad_t *vad = vas->list_head; vad && vad->start < end;
+		 vad = vad->next) {
+		uint64_t lo;
+		uint64_t hi;
+
+		if (vad->end <= start)
+			continue;
+
+		lo = vad->start > start ? vad->start : start;
+		hi = vad->end < end ? vad->end : end;
+		uncommit_range(vas, lo, hi);
+	}
+
+	vad_remove_range(vas, start, end);
 	return 0;
 }
 
-int vmm_map_range(vmm_space_t *space, uint64_t virt, uint64_t phys,
-				  uint64_t size, uint64_t prot)
+int vas_protect(vas_t *vas, uint64_t start, size_t length, uint64_t new_flags)
 {
-	uint64_t pages = PAGE_ALIGN_UP(size) >> PAGE_SHIFT;
+	uint64_t end;
 
-	if (!size)
+	if (!vas || !length)
 		return 0;
-	if ((virt & (PAGE_SIZE - 1)) || (phys & (PAGE_SIZE - 1)))
-		return -1;
 
-	log_range_vv("map range", virt, phys, size, prot);
-	for (uint64_t i = 0; i < pages; i++) {
-		if (vmm_map_page(space, virt + (i << PAGE_SHIFT),
-						 phys + (i << PAGE_SHIFT), prot) != 0)
-			return -1;
+	start = PAGE_ALIGN_DOWN(start);
+	length = PAGE_ALIGN_UP(length);
+	end = start + length;
+	new_flags &= VAD_PROT_MASK;
+
+	for (vad_t *vad = vas->list_head; vad && vad->start < end;
+		 vad = vad->next) {
+		uint64_t lo;
+		uint64_t hi;
+
+		if (vad->end <= start)
+			continue;
+
+		lo = vad->start > start ? vad->start : start;
+		hi = vad->end < end ? vad->end : end;
+
+		for (uint64_t va = lo; va < hi; va += PAGE_SIZE) {
+			if (remap_page_flags(vas, va, new_flags) != 0)
+				return -1;
+		}
+
+		vad->flags = (vad->flags & ~VAD_PROT_MASK) | new_flags;
 	}
 
 	return 0;
 }
 
-void vmm_unmap_page(vmm_space_t *space, uint64_t virt)
+vad_t *vas_find(vas_t *vas, uint64_t addr)
 {
-	pte_t *leaf;
+	if (!vas)
+		return NULL;
 
-	if (!space || !space->pml4_phys || (virt & (PAGE_SIZE - 1)))
-		return;
-
-	leaf = lookup_leaf(space, virt, 0, 0);
-	if (!leaf)
-		return;
-
-	klogvv("unmap page: virt=0x%llx phys=0x%llx", (unsigned long long)virt,
-		   (unsigned long long)(*leaf & PTE_ADDR_MASK));
-	*leaf = 0;
-	if (space == current_space)
-		invlpg(virt);
-}
-
-uint64_t vmm_virt_to_phys(vmm_space_t *space, uint64_t virt)
-{
-	pte_t *leaf;
-
-	if (!space || !space->pml4_phys)
-		return 0;
-
-	leaf = lookup_leaf(space, virt, 0, 0);
-	if (!leaf || !(*leaf & PTE_PRESENT))
-		return 0;
-
-	return (*leaf & PTE_ADDR_MASK) | (virt & (PAGE_SIZE - 1));
-}
-
-vm_area_t *vmm_find_area(vmm_space_t *space, uint64_t virt)
-{
-	for (vm_area_t *area = space ? space->areas : NULL; area;
-		 area = area->next) {
-		if (virt >= area->start && virt < area->end)
-			return area;
-		if (virt < area->start)
-			return NULL;
+	for (vad_t *vad = vas->list_head; vad; vad = vad->next) {
+		if (addr >= vad->start && addr < vad->end)
+			return vad;
 	}
 
 	return NULL;
 }
 
-int vmm_add_area(vmm_space_t *space, vm_area_t *area)
+int vas_range_mapped(vas_t *vas, uint64_t start, size_t length)
 {
-	vm_area_t *cur;
-	vm_area_t *prev = NULL;
+	uint64_t end;
+	uint64_t pos;
 
-	if (!space || !area || area->start >= area->end)
-		return -1;
-	if ((area->start & (PAGE_SIZE - 1)) || (area->end & (PAGE_SIZE - 1)))
+	if (!vas || !length)
+		return 0;
+
+	start = PAGE_ALIGN_DOWN(start);
+	length = PAGE_ALIGN_UP(length);
+	end = start + length;
+	if (end < start)
+		return 0;
+
+	pos = start;
+	for (vad_t *vad = vas->list_head; vad && pos < end; vad = vad->next) {
+		if (vad->end <= pos)
+			continue;
+		if (vad->start > pos)
+			return 0;
+		if (vad->end > pos)
+			pos = vad->end;
+	}
+
+	return pos >= end;
+}
+
+vas_t *vas_adopt(ptable_t *existing_pml4)
+{
+	vas_t *vas;
+
+	if (!existing_pml4)
+		return NULL;
+
+	vas = kzalloc(sizeof(vas_t));
+	if (!vas)
+		return NULL;
+
+	vas->pml4 = existing_pml4;
+	vas->list_head = NULL;
+	vas->user_start = VAS_USER_START;
+	return vas;
+}
+
+int vas_handle_page_fault(vas_t *vas, uint64_t addr, uint64_t err)
+{
+	uint64_t va;
+	vad_t *vad;
+	uint64_t phys;
+	page_t *old_page;
+	uint64_t flags;
+
+	if (!vas)
 		return -1;
 
-	for (cur = space->areas; cur && cur->start < area->start; cur = cur->next)
-		prev = cur;
-
-	if (prev && area->start < prev->end)
-		return -1;
-	if (cur && area->end > cur->start)
+	va = PAGE_ALIGN_DOWN(addr);
+	vad = vas_find(vas, va);
+	if (!vad)
 		return -1;
 
-	area->prev = prev;
-	area->next = cur;
-	if (prev)
-		prev->next = area;
-	else
-		space->areas = area;
-	if (cur)
-		cur->prev = area;
+	if (!(err & 0x2) || !(err & 0x1))
+		return -1;
+	if (!(vad->flags & PAGE_WRITE) || (vad->flags & VAD_SHARED))
+		return -1;
+
+	phys = paging_virt_to_phys(vas, va);
+	if (!phys)
+		return -1;
+
+	old_page = phys_to_page(PAGE_ALIGN_DOWN(phys));
+	if (!old_page || !PageCow(old_page))
+		return -1;
+
+	flags = vad->flags & VAD_PROT_MASK;
+	if (page_ref_count(old_page) <= 1) {
+		ClearPageFlag(old_page, PAGE_COW);
+		return remap_page_flags(vas, va, flags);
+	}
+
+	page_t *new_page = pmm_alloc_page();
+	uint64_t new_phys;
+
+	if (!new_page)
+		return -1;
+
+	new_phys = page_to_phys(new_page);
+	memcpy(PHYS_TO_VIRT(new_phys), PHYS_TO_VIRT(PAGE_ALIGN_DOWN(phys)),
+		   PAGE_SIZE);
+
+	paging_unmap_page(vas, va);
+	pmm_free(old_page);
+	if (paging_map_page(vas, va, new_phys, flags) != 0) {
+		pmm_free(new_page);
+		return -1;
+	}
 
 	return 0;
 }
 
-void paging_init(struct limine_memmap_response *memmap,
-				 struct limine_framebuffer *framebuffer,
-				 struct limine_executable_address_response *kernel_addr)
+int vas_user_access_ok(vas_t *vas, uint64_t addr, size_t len, int write)
 {
-	if (!memmap)
-		kpanic(NULL, "vmm: missing memory map");
-	if (!kernel_addr)
-		kpanic(NULL, "vmm: missing executable address response");
-	if (kernel_addr->virtual_base != (uint64_t)__kernel_start)
-		kpanic(NULL, "vmm: linker base 0x%llx != Limine base 0x%llx",
-			   (unsigned long long)(uint64_t)__kernel_start,
-			   (unsigned long long)kernel_addr->virtual_base);
+	uint64_t start;
+	uint64_t end;
 
-	enable_nx_if_available();
+	if (!vas)
+		return -1;
+	if (addr < VAS_USER_START || addr >= VAS_USER_END)
+		return -1;
+	if (len > VAS_USER_END - addr)
+		return -1;
+	if (len == 0)
+		return 0;
 
-	memset(&kernel_space, 0, sizeof(kernel_space));
-	page_table_count = 0;
-	kernel_space.pml4_phys = alloc_table();
-	kernel_space.lower_bound = 0xffff800000000000ull;
-	kernel_space.upper_bound = 0xffffffffffffffffull;
-	if (!kernel_space.pml4_phys)
-		kpanic(NULL, "vmm: failed to allocate kernel PML4");
+	start = PAGE_ALIGN_DOWN(addr);
+	end = PAGE_ALIGN_UP(addr + len);
 
-	if (map_hhdm(memmap) != 0)
-		kpanic(NULL, "vmm: failed to map HHDM");
-	if (map_pfndb() != 0)
-		kpanic(NULL, "vmm: failed to map PFNDB");
+	for (uint64_t va = start; va < end; va += PAGE_SIZE) {
+		uint64_t flags = paging_get_flags(vas, va);
 
-	if (map_kernel_segment("map boot requests", (uint64_t)__kernel_start,
-						   (uint64_t)__text_start, kernel_addr->physical_base,
-						   kernel_addr->virtual_base,
-						   VMM_PROT_READ | VMM_PROT_WRITE | VMM_PROT_GLOBAL) !=
-		0)
-		kpanic(NULL, "vmm: failed to map Limine request segment");
-	if (map_kernel_segment(
-			"map kernel text", (uint64_t)__text_start, (uint64_t)__text_end,
-			kernel_addr->physical_base, kernel_addr->virtual_base,
-			VMM_PROT_READ | VMM_PROT_EXEC | VMM_PROT_GLOBAL) != 0)
-		kpanic(NULL, "vmm: failed to map kernel text");
-	if (map_kernel_segment("map kernel rodata", (uint64_t)__rodata_start,
-						   (uint64_t)__rodata_end, kernel_addr->physical_base,
-						   kernel_addr->virtual_base,
-						   VMM_PROT_READ | VMM_PROT_GLOBAL) != 0)
-		kpanic(NULL, "vmm: failed to map kernel rodata");
-	if (map_kernel_segment(
-			"map kernel data", (uint64_t)__data_start, (uint64_t)__kernel_end,
-			kernel_addr->physical_base, kernel_addr->virtual_base,
-			VMM_PROT_READ | VMM_PROT_WRITE | VMM_PROT_GLOBAL) != 0)
-		kpanic(NULL, "vmm: failed to map kernel data");
-	if (map_framebuffer(framebuffer) != 0)
-		kpanic(NULL, "vmm: failed to map framebuffer");
-
-	add_static_area(&hhdm_area, hhdm_offset, hhdm_offset + memmap_top(memmap),
-					VMM_PROT_READ | VMM_PROT_WRITE | VMM_PROT_GLOBAL,
-					VMM_AREA_HHDM | VMM_AREA_KERNEL);
-	add_static_area(
-		&kernel_image_area, (uint64_t)__kernel_start, (uint64_t)__kernel_end,
-		VMM_PROT_READ | VMM_PROT_WRITE | VMM_PROT_EXEC | VMM_PROT_GLOBAL,
-		VMM_AREA_KERNEL);
-	if (framebuffer && framebuffer->address) {
-		uint64_t start = PAGE_ALIGN_DOWN((uint64_t)framebuffer->address);
-		uint64_t end = PAGE_ALIGN_UP((uint64_t)framebuffer->address +
-									 framebuffer->pitch * framebuffer->height);
-		if (!vmm_find_area(&kernel_space, start))
-			add_static_area(&framebuffer_area, start, end,
-							VMM_PROT_READ | VMM_PROT_WRITE | VMM_PROT_GLOBAL,
-							VMM_AREA_DEVICE | VMM_AREA_KERNEL);
+		if (!(flags & PAGE_PRESENT))
+			return -1;
+		if (write && !(flags & PAGE_WRITE)) {
+			if (vas_handle_page_fault(vas, va, 0x3) != 0)
+				return -1;
+			flags = paging_get_flags(vas, va);
+			if (!(flags & PAGE_PRESENT) || !(flags & PAGE_WRITE))
+				return -1;
+		}
 	}
 
-	vmm_switch(&kernel_space);
-	klog("4-level paging enabled");
-	klogv("pml4=0x%llx tables=%llu kernel=[%p,%p) hhdm=%p",
-		  (unsigned long long)kernel_space.pml4_phys,
-		  (unsigned long long)page_table_count, __kernel_start, __kernel_end,
-		  (void *)hhdm_offset);
+	return 0;
+}
+
+vas_t *vas_clone(vas_t *src)
+{
+	vas_t *dst;
+
+	if (!src)
+		return NULL;
+
+	dst = vas_create(NULL);
+	if (!dst)
+		return NULL;
+
+	dst->user_start = src->user_start;
+
+	for (vad_t *vad = src->list_head; vad; vad = vad->next) {
+		vad_t *copy = vad_alloc(vad->start, vad->end, vad->flags);
+		uint64_t prot = vad->flags & VAD_PROT_MASK;
+
+		if (!copy) {
+			vas_destroy(dst);
+			return NULL;
+		}
+
+		vad_insert(dst, copy);
+
+		for (uint64_t va = vad->start; va < vad->end; va += PAGE_SIZE) {
+			uint64_t src_phys = paging_virt_to_phys(src, va);
+			page_t *page;
+
+			if (!src_phys)
+				continue;
+
+			page = phys_to_page(PAGE_ALIGN_DOWN(src_phys));
+			if (!page || PageReserved(page) || PagePoisoned(page)) {
+				if (paging_map_page(dst, va, PAGE_ALIGN_DOWN(src_phys), prot) !=
+					0) {
+					vas_destroy(dst);
+					return NULL;
+				}
+				continue;
+			}
+
+			page_ref_inc(page);
+
+			if ((prot & PAGE_WRITE) && !(vad->flags & VAD_SHARED)) {
+				uint64_t cow_flags = prot & ~PAGE_WRITE;
+
+				SetPageFlag(page, PAGE_COW);
+				if (remap_page_flags(src, va, cow_flags) != 0 ||
+					paging_map_page(dst, va, PAGE_ALIGN_DOWN(src_phys),
+									cow_flags) != 0) {
+					pmm_free(page);
+					vas_destroy(dst);
+					return NULL;
+				}
+			} else {
+				if (paging_map_page(dst, va, PAGE_ALIGN_DOWN(src_phys), prot) !=
+					0) {
+					pmm_free(page);
+					vas_destroy(dst);
+					return NULL;
+				}
+			}
+		}
+	}
+
+	return dst;
+}
+
+int vas_add(vas_t *vas, vad_t *vad)
+{
+	if (!vas || !vad || vad->start >= vad->end)
+		return -1;
+	if ((vad->start & (PAGE_SIZE - 1)) || (vad->end & (PAGE_SIZE - 1)))
+		return -1;
+	if (vas_overlaps(vas, vad->start, vad->end))
+		return -1;
+
+	vad_insert(vas, vad);
+	return 0;
 }

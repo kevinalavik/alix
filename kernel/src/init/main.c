@@ -25,6 +25,8 @@ uint64_t hhdm_offset = 0;
 
 void kmain(void)
 {
+	struct limine_framebuffer *framebuffer;
+
 	if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
 		kpanic(NULL, "unsupported limine base revision");
 	}
@@ -33,9 +35,22 @@ void kmain(void)
 		framebuffer_request.response->framebuffer_count < 1) {
 		kpanic(NULL, "no framebuffer");
 	}
+	if (memmap_request.response == NULL) {
+		kpanic(NULL, "no memory map");
+	}
+	if (executable_address_request.response == NULL) {
+		kpanic(NULL, "no executable address response");
+	}
+	if (paging_mode_request.response == NULL ||
+		paging_mode_request.response->mode != LIMINE_PAGING_MODE_X86_64_4LVL) {
+		kpanic(NULL, "expected Limine x86_64 4-level paging mode");
+	}
+	if (hhdm_request.response == NULL) {
+		kpanic(NULL, "no HHDM offset");
+	}
 
-	struct limine_framebuffer *framebuffer =
-		framebuffer_request.response->framebuffers[0];
+	framebuffer = framebuffer_request.response->framebuffers[0];
+	hhdm_offset = hhdm_request.response->offset;
 
 	ft_ctx = flanterm_fb_init(
 		NULL, NULL, framebuffer->address, framebuffer->width,
@@ -63,37 +78,16 @@ void kmain(void)
 		  (unsigned long long)framebuffer->pitch, framebuffer->bpp,
 		  framebuffer->address);
 
-	gdt_init();
-
-	idt_init();
-
-	if (memmap_request.response == NULL) {
-		kpanic(NULL, "no memory map");
-	}
-
-	if (hhdm_request.response != NULL) {
-		hhdm_offset = hhdm_request.response->offset;
-		klogv("hhdm offset=%p", (void *)hhdm_offset);
-	} else {
-		kpanic(NULL, "no HHDM offset");
-	}
-
-	if (executable_address_request.response == NULL) {
-		kpanic(NULL, "no executable address response");
-	}
-
-	if (paging_mode_request.response == NULL ||
-		paging_mode_request.response->mode != LIMINE_PAGING_MODE_X86_64_4LVL) {
-		kpanic(NULL, "expected Limine x86_64 4-level paging mode");
-	}
+	klogv("hhdm offset=%p", (void *)hhdm_offset);
 	klogv("limine paging mode=%llu",
 		  (unsigned long long)paging_mode_request.response->mode);
-
+	gdt_init();
+	idt_init();
 	pfndb_init(memmap_request.response);
-
 	pmm_init();
 	paging_init(memmap_request.response, framebuffer,
 				executable_address_request.response);
+	klog("kernel VAS: %p (pml4=%p)", kernel_vas, kernel_vas->pml4);
 	kheap_init();
 
 	klog("--------------------------------------------------");

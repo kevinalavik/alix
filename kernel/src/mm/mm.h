@@ -2,6 +2,7 @@
 #define MM_MM_H
 
 #include <mm/page.h>
+#include <mm/paging.h>
 #include <mm/pfndb.h>
 #include <mm/pmm.h>
 #include <mm/vmm.h>

@@ -5,6 +5,7 @@
 
 #define X86_MSR_EFER 0xc0000080u
 #define X86_EFER_NXE (1ull << 11)
+#define X86_CR4_PGE (1ull << 7)
 
 static inline void cli()
 {

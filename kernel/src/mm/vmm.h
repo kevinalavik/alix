@@ -1,58 +1,56 @@
-#ifndef MM_VMM_H
-#define MM_VMM_H
+#ifndef _LYR_MM_VMM_H
+#define _LYR_MM_VMM_H
 
-#include <limine.h>
 #include <stdint.h>
+#include <stddef.h>
 #include <mm/page.h>
+#include <mm/paging.h>
 
-#define VMM_PROT_READ _PAGE_BIT(0)
-#define VMM_PROT_WRITE _PAGE_BIT(1)
-#define VMM_PROT_EXEC _PAGE_BIT(2)
-#define VMM_PROT_USER _PAGE_BIT(3)
-#define VMM_PROT_GLOBAL _PAGE_BIT(4)
+#define VAD_PROT_MASK \
+	(PAGE_PRESENT | PAGE_WRITE | PAGE_USER | PAGE_GLOBAL | PAGE_NX)
+#define VAD_ANONYMOUS (1ull << 12)
+#define VAD_FIXED (1ull << 13)
+#define VAD_MAPPED (1ull << 14)
+#define VAD_SHARED (1ull << 15)
+#define VAD_KERNEL (1ull << 16)
+#define VAD_HHDM (1ull << 17)
+#define VAD_DEVICE (1ull << 18)
 
-#define VMM_AREA_ANON _PAGE_BIT(0)
-#define VMM_AREA_FILE _PAGE_BIT(1)
-#define VMM_AREA_STACK _PAGE_BIT(2)
-#define VMM_AREA_HEAP _PAGE_BIT(3)
-#define VMM_AREA_KERNEL _PAGE_BIT(4)
-#define VMM_AREA_HHDM _PAGE_BIT(5)
-#define VMM_AREA_DEVICE _PAGE_BIT(6)
+#define VAS_USER_START 0x0000000000001000ull
+#define VAS_USER_END 0x00007FFFFFFFFFFFull
 
-typedef struct vm_area vm_area_t;
-typedef struct vmm_space vmm_space_t;
-
-struct vm_area {
+typedef struct vad {
 	uint64_t start;
 	uint64_t end;
-	uint64_t prot;
 	uint64_t flags;
-	uint64_t offset;
-	void *object;
-	vm_area_t *prev;
-	vm_area_t *next;
-};
+	struct vad *next;
+} vad_t;
 
-struct vmm_space {
-	uint64_t pml4_phys;
-	uint64_t lower_bound;
-	uint64_t upper_bound;
-	vm_area_t *areas;
-};
+typedef struct vas {
+	ptable_t *pml4;
+	vad_t *list_head;
+	uint64_t user_start;
+} vas_t;
 
-void paging_init(struct limine_memmap_response *memmap,
-				 struct limine_framebuffer *framebuffer,
-				 struct limine_executable_address_response *kernel_addr);
-vmm_space_t *vmm_kernel_space(void);
-vmm_space_t *vmm_current_space(void);
-void vmm_switch(vmm_space_t *space);
-int vmm_map_page(vmm_space_t *space, uint64_t virt, uint64_t phys,
-				 uint64_t prot);
-int vmm_map_range(vmm_space_t *space, uint64_t virt, uint64_t phys,
-				  uint64_t size, uint64_t prot);
-void vmm_unmap_page(vmm_space_t *space, uint64_t virt);
-uint64_t vmm_virt_to_phys(vmm_space_t *space, uint64_t virt);
-vm_area_t *vmm_find_area(vmm_space_t *space, uint64_t virt);
-int vmm_add_area(vmm_space_t *space, vm_area_t *area);
+extern vas_t *kernel_vas;
 
-#endif // MM_VMM_H
+vas_t *vas_create(ptable_t *pt);
+void vas_destroy(vas_t *vas);
+
+uint64_t vas_map_anon(vas_t *vas, uint64_t hint, size_t length, uint64_t flags);
+uint64_t vas_map_phys(vas_t *vas, uint64_t hint, uint64_t phys, size_t length,
+					  uint64_t flags);
+int vas_unmap(vas_t *vas, uint64_t start, size_t length);
+int vas_protect(vas_t *vas, uint64_t start, size_t length, uint64_t new_flags);
+vad_t *vas_find(vas_t *vas, uint64_t addr);
+int vas_range_mapped(vas_t *vas, uint64_t start, size_t length);
+int vas_handle_page_fault(vas_t *vas, uint64_t addr, uint64_t err);
+int vas_user_access_ok(vas_t *vas, uint64_t addr, size_t len, int write);
+
+void vas_switch(vas_t *vas);
+vas_t *vas_adopt(ptable_t *existing_pml4);
+vas_t *vas_clone(vas_t *src);
+
+int vas_add(vas_t *vas, vad_t *vad);
+
+#endif /* _LYR_MM_VMM_H */
