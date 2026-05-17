@@ -43,7 +43,7 @@ void kvlog_write(const char *ns, const char *fmt, va_list ap);
 #define klogv(fmt, ...) \
 	klog_write_level(KLOG_LEVEL_VERBOSE, KLOG_NS, fmt, ##__VA_ARGS__)
 #define klogvv(fmt, ...) \
-	klog_write_level(KLOG_LEVEL_VERBOSE, KLOG_NS, fmt, ##__VA_ARGS__)
+	klog_write_level(KLOG_LEVEL_VVERBOSE, KLOG_NS, fmt, ##__VA_ARGS__)
 #define klogvvv(fmt, ...) \
 	klog_write_level(KLOG_LEVEL_VVERBOSE, KLOG_NS, fmt, ##__VA_ARGS__)
 

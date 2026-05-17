@@ -1,8 +1,8 @@
 #include <dev/pit.h>
 #include <stdint.h>
-#include <api/time.h>
 #include <cpu/instr.h>
 #include <core/alix.h>
+#include <sys/time.h>
 
 #define PIT_HZ 1193182ULL
 #define PIT_CALIBRATE_MS 50ULL

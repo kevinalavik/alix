@@ -5,12 +5,12 @@
 #include <stdint.h>
 #include <stdarg.h>
 
-#include <api/time.h>
 #include <dev/uart.h>
 #include <lib/kprintf.h>
 #include <lib/spinlock.h>
 #include <lib/string.h>
 #include <core/alix.h>
+#include <sys/time.h>
 
 static struct klog_record klog_ring[KLOG_RING_SIZE];
 

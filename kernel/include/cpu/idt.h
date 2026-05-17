@@ -60,6 +60,8 @@ typedef interrupt_frame_t *(*irq_callback)(interrupt_frame_t *);
 typedef struct {
 	void *ctx;
 	irq_callback callback;
+	uint8_t vector;
+	uint8_t lapic_id;
 } irq_handler_t;
 
 void idt_init(void);
@@ -68,5 +70,8 @@ void idt_set_desc(idt_entry_t *desc, uint64_t offset, uint8_t type,
 
 void irq_install(uint8_t irq, irq_callback callback, interrupt_frame_t *ctx,
 				 uint8_t lapic_id);
+void irq_install_vector(uint8_t vector, irq_callback callback,
+						interrupt_frame_t *ctx, uint8_t lapic_id);
+void irq_uninstall_vector(uint8_t vector);
 
 #endif // CPU_IDT_H

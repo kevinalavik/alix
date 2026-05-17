@@ -1,11 +1,9 @@
 #include <limine.h>
-#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <cpu/instr.h>
 #include <dev/uart.h>
 #include <dev/pit.h>
-#include <api/time.h>
 #include <boot/liminereq.h>
 #include <core/alix.h>
 #include <debug/panic.h>
@@ -13,6 +11,9 @@
 #include <log/klog.h>
 #include <cpu/gdt.h>
 #include <cpu/smp.h>
+#include <sys/apic.h>
+#include <sys/timer.h>
+#include <sys/time.h>
 #include <flanterm.h>
 #include <flanterm_backends/fb.h>
 #include <lib/kprintf.h>
@@ -25,6 +26,14 @@
 uint64_t boot_tsc = 0;
 struct flanterm_context *ft_ctx = NULL;
 uint64_t hhdm_offset = 0;
+
+#define BOOT_TICK_EVERY 100
+
+static interrupt_frame_t *boot_tick(interrupt_frame_t *frame)
+{
+	klog("hello from CPU%u", cpu_current()->index);
+	return frame;
+}
 
 void kmain(void)
 {
@@ -87,7 +96,6 @@ void kmain(void)
 	gdt_init();
 	idt_init();
 
-	/* memory stuff*/
 	pfndb_init(memmap_request.response);
 	pmm_init();
 	paging_init(memmap_request.response, framebuffer,
@@ -95,26 +103,25 @@ void kmain(void)
 	klog("kernel VAS: %p (pml4=%p)", kernel_vas, kernel_vas->pml4);
 	kheap_init();
 
-	/* smp stuff and apic */
-	if (mp_request.response == NULL) {
-		kpanic(NULL, "no SMP information");
-	}
-
-	smp_init(mp_request.response);
-	smp_wait_all_online();
-
-	if (!cpu_current()->is_bsp) {
-		nointloop();
-		__builtin_unreachable();
-	}
-
 	if (rsdp_request.response == NULL) {
 		kpanic(NULL, "no RSDP information");
 	}
 	acpi_init(rsdp_request.response);
 	madt_init();
+	apic_init();
+
+	if (mp_request.response == NULL) {
+		kpanic(NULL, "no SMP information");
+	}
+
+	smp_init(mp_request.response);
+	timer_init(100);
+	smp_wait_all_online();
 
 	klog("--------------------------------------------------");
 	klog("kernel v" ALIX_VERSION " initialized.");
-	hlt();
+	timer_on_tick(boot_tick);
+	sti();
+	for (;;)
+		hlt();
 }

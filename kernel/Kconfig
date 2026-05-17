@@ -11,7 +11,7 @@ config KLOG_VERBOSITY
 
 	  0 = quiet, force logs only
 	  1 = normal subsystem summaries
-	  2 = verbose diagnostics (`klogv` and `klogvv`)
-	  3 = trace diagnostics (`klogvvv`)
+	  2 = verbose diagnostics (`klogv`)
+	  3 = trace diagnostics (`klogvv`)
 
 endmenu

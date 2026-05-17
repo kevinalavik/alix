@@ -57,8 +57,8 @@ static void free_block(page_t *page)
 		if (!PageFree(buddy_page) || buddy_page->order != order)
 			break;
 
-		klogvvv("coalesce pfn=0x%llx buddy=0x%llx order=%u",
-				(unsigned long long)pfn, (unsigned long long)buddy, order);
+		klogvv("coalesce pfn=0x%llx buddy=0x%llx order=%u",
+			   (unsigned long long)pfn, (unsigned long long)buddy, order);
 		free_list_remove(order, buddy_page);
 
 		if (buddy < pfn) {
@@ -80,8 +80,8 @@ static void free_block(page_t *page)
 		SetPageFlag(page, PAGE_LARGE_HEAD);
 
 	if (order != start_order)
-		klogvvv("free block merged: pfn=0x%llx order=%u->%u",
-				(unsigned long long)page_to_pfn(page), start_order, order);
+		klogvv("free block merged: pfn=0x%llx order=%u->%u",
+			   (unsigned long long)page_to_pfn(page), start_order, order);
 
 	free_list_push(order, page);
 }
@@ -109,7 +109,7 @@ void pmm_init(void)
 
 	for (uint8_t o = 0; o < MAX_ORDER; o++) {
 		if (free_lists[o].count)
-			klogvvv("order[%u]=%llu", o, free_lists[o].count);
+			klogvv("order[%u]=%llu", o, free_lists[o].count);
 	}
 }
 
@@ -118,7 +118,7 @@ page_t *pmm_alloc(uint8_t order)
 	if (order >= MAX_ORDER)
 		return NULL;
 
-	klogvvv("alloc request order=%u free=%llu", order, free_page_count);
+	klogvv("alloc request order=%u free=%llu", order, free_page_count);
 
 	for (uint8_t o = order; o < MAX_ORDER; o++) {
 		if (!free_lists[o].head)
@@ -127,8 +127,8 @@ page_t *pmm_alloc(uint8_t order)
 		page_t *page = free_lists[o].head;
 		uint64_t pfn = page_to_pfn(page);
 		free_list_remove(o, page);
-		klogvvv("alloc source pfn=0x%llx order=%u target=%u",
-				(unsigned long long)pfn, o, order);
+		klogvv("alloc source pfn=0x%llx order=%u target=%u",
+			   (unsigned long long)pfn, o, order);
 
 		while (o > order) {
 			o--;
@@ -136,8 +136,8 @@ page_t *pmm_alloc(uint8_t order)
 			buddy->order = o;
 			buddy->flags = PAGE_FREE | PAGE_LARGE_HEAD;
 			free_list_push(o, buddy);
-			klogvvv("split buddy pfn=0x%llx order=%u",
-					(unsigned long long)page_to_pfn(buddy), o);
+			klogvv("split buddy pfn=0x%llx order=%u",
+				   (unsigned long long)page_to_pfn(buddy), o);
 		}
 
 		uint64_t count = 1ull << order;
@@ -156,9 +156,9 @@ page_t *pmm_alloc(uint8_t order)
 
 		atomic_store_explicit(&page->refcount, 1, memory_order_relaxed);
 		free_page_count -= count;
-		klogvvv("allocated pfn=0x%llx phys=0x%llx order=%u free=%llu",
-				(unsigned long long)page_to_pfn(page),
-				(unsigned long long)page_to_phys(page), order, free_page_count);
+		klogvv("allocated pfn=0x%llx phys=0x%llx order=%u free=%llu",
+			   (unsigned long long)page_to_pfn(page),
+			   (unsigned long long)page_to_phys(page), order, free_page_count);
 		return page;
 	}
 
@@ -189,8 +189,8 @@ void pmm_free(page_t *page)
 		uint64_t pfn = page_to_pfn(page);
 		uint8_t order = page->order;
 
-		klogvvv("free pfn=0x%llx phys=0x%llx order=%u", (unsigned long long)pfn,
-				(unsigned long long)page_to_phys(page), order);
+		klogvv("free pfn=0x%llx phys=0x%llx order=%u", (unsigned long long)pfn,
+			   (unsigned long long)page_to_phys(page), order);
 
 		if (page->order > 0) {
 			for (uint64_t i = 1; i < count; i++) {
@@ -202,8 +202,8 @@ void pmm_free(page_t *page)
 
 		free_page_count += count;
 		free_block(page);
-		klogvvv("freed pfn=0x%llx order=%u free=%llu", (unsigned long long)pfn,
-				order, free_page_count);
+		klogvv("freed pfn=0x%llx order=%u free=%llu", (unsigned long long)pfn,
+			   order, free_page_count);
 	}
 }
 

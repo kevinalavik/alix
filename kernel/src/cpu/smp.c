@@ -1,8 +1,11 @@
 #include <cpu/smp.h>
+#include <sys/apic.h>
 #include <core/alix.h>
 #include <cpu/gdt.h>
 #include <cpu/idt.h>
 #include <cpu/instr.h>
+#include <sys/timer.h>
+#include <mm/vmm.h>
 #include <lib/atomic.h>
 #include <lib/spinlock.h>
 
@@ -31,16 +34,18 @@ static noreturn void smp_ap_entry(struct limine_mp_info *mp_info)
 	struct cpu_info *cpu =
 		(struct cpu_info *)(uintptr_t)mp_info->extra_argument;
 
+	cli();
+	vas_switch(kernel_vas);
 	gdt_init_cpu(cpu->index);
-	idt_init();
 	cpu_set_current(cpu);
-
+	idt_init();
+	apic_cpu_init((uint8_t)cpu->index);
+	timer_init(100);
 	smp_log_cpu(cpu, "online");
-
-	/* Publish the AP as online only after its startup path has completed. */
 	atomic_store(&cpu->online, 1, __ATOMIC_RELEASE);
-
-	nointloop();
+	sti();
+	for (;;)
+		hlt();
 	__builtin_unreachable();
 }
 

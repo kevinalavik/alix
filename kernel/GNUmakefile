@@ -72,6 +72,7 @@ override CFLAGS += \
     -mcmodel=kernel
 
 override CPPFLAGS := \
+    -I include \
     -I src \
     -I limine-protocol/include \
     -I flanterm/src \

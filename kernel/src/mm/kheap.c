@@ -71,9 +71,9 @@ static slab_t *slab_create(slab_cache_t *cache)
 		*slot = (i + 1 < total) ? (base + (i + 1) * cache->obj_size) : NULL;
 	}
 
-	klogvvv("slab create cache=%s size=%u align=%u page=0x%llx objs=%u",
-			cache->name, cache->obj_size, cache->obj_align,
-			(unsigned long long)page_to_phys(page), total);
+	klogvv("slab create cache=%s size=%u align=%u page=0x%llx objs=%u",
+		   cache->name, cache->obj_size, cache->obj_align,
+		   (unsigned long long)page_to_phys(page), total);
 	return slab;
 }
 
@@ -82,9 +82,9 @@ static void slab_destroy(slab_t *slab)
 	page_t *page = slab->page;
 	slab_cache_t *cache = (slab_cache_t *)(uintptr_t)page->private;
 
-	klogvvv("slab destroy cache=%s page=0x%llx inuse=%u/%u",
-			cache ? cache->name : "?", (unsigned long long)page_to_phys(page),
-			slab->inuse, slab->total);
+	klogvv("slab destroy cache=%s page=0x%llx inuse=%u/%u",
+		   cache ? cache->name : "?", (unsigned long long)page_to_phys(page),
+		   slab->inuse, slab->total);
 	ClearPageFlag(page, PAGE_SLAB);
 	page->private = -1;
 	pmm_free(page);
@@ -166,12 +166,12 @@ void *slab_alloc(slab_cache_t *cache)
 	if (!slab->freelist) {
 		slab_list_remove(&cache->partial, slab);
 		slab_list_push(&cache->full, slab);
-		klogvvv("slab full cache=%s page=0x%llx", cache->name,
-				(unsigned long long)page_to_phys(slab->page));
+		klogvv("slab full cache=%s page=0x%llx", cache->name,
+			   (unsigned long long)page_to_phys(slab->page));
 	}
 
-	klogvvv("alloc cache=%s size=%u ptr=%p inuse=%u/%u", cache->name,
-			cache->obj_size, obj, slab->inuse, slab->total);
+	klogvv("alloc cache=%s size=%u ptr=%p inuse=%u/%u", cache->name,
+		   cache->obj_size, obj, slab->inuse, slab->total);
 	return obj;
 }
 
@@ -185,16 +185,16 @@ void slab_free(slab_cache_t *cache, void *ptr)
 	if (was_full) {
 		slab_list_remove(&cache->full, slab);
 		slab_list_push(&cache->partial, slab);
-		klogvvv("slab partial cache=%s page=0x%llx", cache->name,
-				(unsigned long long)page_to_phys(slab->page));
+		klogvv("slab partial cache=%s page=0x%llx", cache->name,
+			   (unsigned long long)page_to_phys(slab->page));
 	}
 
 	*(void **)ptr = slab->freelist;
 	slab->freelist = ptr;
 	slab->inuse--;
 	cache->free_count++;
-	klogvvv("free cache=%s ptr=%p inuse=%u/%u", cache->name, ptr, slab->inuse,
-			slab->total);
+	klogvv("free cache=%s ptr=%p inuse=%u/%u", cache->name, ptr, slab->inuse,
+		   slab->total);
 }
 
 static slab_cache_t *cache_for_size(uint64_t size)
@@ -268,9 +268,8 @@ void *kmalloc(uint64_t size)
 
 	if (ptr) {
 		total_alloc_count++;
-		klogvvv("kmalloc size=%llu ptr=%p allocs=%llu",
-				(unsigned long long)size, ptr,
-				(unsigned long long)total_alloc_count);
+		klogvv("kmalloc size=%llu ptr=%p allocs=%llu", (unsigned long long)size,
+			   ptr, (unsigned long long)total_alloc_count);
 	}
 
 	return ptr;
@@ -352,8 +351,8 @@ void kfree(void *ptr)
 	}
 
 	total_free_count++;
-	klogvvv("kfree ptr=%p frees=%llu", ptr,
-			(unsigned long long)total_free_count);
+	klogvv("kfree ptr=%p frees=%llu", ptr,
+		   (unsigned long long)total_free_count);
 }
 
 uint64_t kheap_alloc_count(void)
