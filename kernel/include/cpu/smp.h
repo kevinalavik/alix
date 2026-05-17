@@ -4,6 +4,9 @@
 #include <limine.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <lib/rq.h>
+
+typedef struct tcb tcb_t;
 
 struct cpu_info {
 	uint32_t index;
@@ -12,6 +15,13 @@ struct cpu_info {
 	bool is_bsp;
 	volatile uint32_t online;
 	struct limine_mp_info *mp_info;
+
+	/* sched */
+	volatile uint32_t sched_lock;
+	rq_t rq;
+	tcb_t *idle_thread;
+	tcb_t *current_thread;
+	uint32_t sched_thread_count;
 };
 
 void smp_init(struct limine_mp_response *mp_response);

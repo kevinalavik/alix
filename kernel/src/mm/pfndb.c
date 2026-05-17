@@ -2,7 +2,7 @@
 #define KLOG_NS "pfndb"
 #include <log/klog.h>
 #include <debug/panic.h>
-#include <string.h>
+#include <lib/string.h>
 
 static page_t *mem_map;
 static uint64_t max_pfn;

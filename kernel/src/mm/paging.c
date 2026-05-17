@@ -3,7 +3,7 @@
 #include <log/klog.h>
 #include <debug/panic.h>
 #include <cpu/instr.h>
-#include <string.h>
+#include <lib/string.h>
 #include <stdbool.h>
 
 static vas_t _kvas;

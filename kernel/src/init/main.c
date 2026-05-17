@@ -21,17 +21,12 @@
 #include <mm/mm.h>
 #include <lib/string.h>
 #include <sys/acpi.h>
+#include <sys/sched.h>
 #include <acpi/madt.h>
 
 uint64_t boot_tsc = 0;
 struct flanterm_context *ft_ctx = NULL;
 uint64_t hhdm_offset = 0;
-
-static interrupt_frame_t *boot_tick(interrupt_frame_t *frame)
-{
-	klog("hello from CPU%u", cpu_current()->index);
-	return frame;
-}
 
 void kmain(void)
 {
@@ -113,12 +108,12 @@ void kmain(void)
 	}
 
 	smp_init(mp_request.response);
-	timer_init(100);
+	sched_init();
+	timer_init(1000);
 	smp_wait_all_online();
 
 	klog("--------------------------------------------------");
 	klog("kernel v" ALIX_VERSION " initialized.");
-	timer_on_tick(boot_tick);
 	sti();
 	for (;;)
 		hlt();

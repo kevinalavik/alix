@@ -2,7 +2,7 @@
 #define KLOG_NS "kheap"
 #include <log/klog.h>
 #include <debug/panic.h>
-#include <string.h>
+#include <lib/string.h>
 
 #define LARGE_MAGIC 0x4B484541504C4741ull
 #define LARGE_PAGE_TAG 0x4B48454150000000ull
@@ -261,9 +261,9 @@ void *kmalloc(uint64_t size)
 		hdr->order = order;
 		page->private = LARGE_PAGE_TAG | order;
 		ptr = (uint8_t *)hdr + sizeof(large_hdr_t);
-		klogv("large alloc size=%llu order=%u ptr=%p phys=0x%llx",
-			  (unsigned long long)size, order, ptr,
-			  (unsigned long long)page_to_phys(page));
+		klogvv("large alloc size=%llu order=%u ptr=%p phys=0x%llx",
+			   (unsigned long long)size, order, ptr,
+			   (unsigned long long)page_to_phys(page));
 	}
 
 	if (ptr) {

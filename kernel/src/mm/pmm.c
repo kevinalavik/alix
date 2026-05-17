@@ -2,7 +2,7 @@
 #define KLOG_NS "pmm"
 #include <log/klog.h>
 #include <debug/panic.h>
-#include <string.h>
+#include <lib/string.h>
 
 #define MAX_ORDER PMM_MAX_ORDER
 

@@ -5,12 +5,12 @@
 #include <cpu/smp.h>
 #include <lib/atomic.h>
 #include <sys/apic.h>
+#include <sys/sched.h>
 
 static uint32_t timer_reload;
 static volatile uint32_t timer_calibrating;
 static volatile uint32_t timer_vector_installed;
 static volatile uint64_t timer_ticks[MAX_CPUS];
-static timer_tick_handler_t timer_tick_handler;
 
 #define PIT_HZ 1193182ULL
 #define TIMER_CAL_MS 10ULL
@@ -99,16 +99,13 @@ static interrupt_frame_t *timer_irq(interrupt_frame_t *frame)
 		atomic_fetch_add(&timer_ticks[index], 1, __ATOMIC_RELAXED);
 
 	apic_send_eoi();
-
-	if (timer_tick_handler != NULL)
-		return timer_tick_handler(frame);
-
+	sched_tick();
 	return frame;
 }
 
 void timer_on_tick(timer_tick_handler_t handler)
 {
-	timer_tick_handler = handler;
+	(void)handler;
 }
 
 uint64_t timer_cpu_ticks(uint32_t cpu_index)

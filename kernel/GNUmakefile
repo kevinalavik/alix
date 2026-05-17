@@ -54,6 +54,7 @@ override CFLAGS += \
     -Wextra \
     -std=c99 \
     -ffreestanding \
+    -nostdinc \
     -fno-omit-frame-pointer \
     -fno-stack-protector \
     -fno-stack-check \

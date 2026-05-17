@@ -2,7 +2,7 @@
 #define KLOG_NS "vmm"
 #include <log/klog.h>
 #include <debug/panic.h>
-#include <string.h>
+#include <lib/string.h>
 
 static vad_t *vad_alloc(uint64_t start, uint64_t end, uint64_t flags)
 {

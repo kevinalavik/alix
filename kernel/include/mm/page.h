@@ -1,7 +1,7 @@
 #ifndef MM_PAGE_H
 #define MM_PAGE_H
 
-#include <stdatomic.h>
+#include <lib/atomic.h>
 #include <stdint.h>
 
 #define PAGE_SIZE 0x1000u
@@ -99,14 +99,14 @@ static inline int page_ref_count(const page_t *page)
 
 static inline void page_addprivate(page_t *page)
 {
-	page->private++;
+	page->private ++;
 	if (page->private > 0)
 		SetPageFlag(page, PAGE_SHARED);
 }
 
 static inline void page_subprivate(page_t *page)
 {
-	page->private--;
+	page->private --;
 	if (page->private <= 0)
 		ClearPageFlag(page, PAGE_SHARED);
 }

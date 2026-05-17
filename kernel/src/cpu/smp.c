@@ -4,6 +4,7 @@
 #include <cpu/gdt.h>
 #include <cpu/idt.h>
 #include <cpu/instr.h>
+#include <sys/sched.h>
 #include <sys/timer.h>
 #include <mm/vmm.h>
 #include <lib/atomic.h>
@@ -40,6 +41,7 @@ static noreturn void smp_ap_entry(struct limine_mp_info *mp_info)
 	cpu_set_current(cpu);
 	idt_init();
 	apic_cpu_init((uint8_t)cpu->index);
+	sched_init();
 	timer_init(100);
 	smp_log_cpu(cpu, "online");
 	atomic_store(&cpu->online, 1, __ATOMIC_RELEASE);
