@@ -1,5 +1,5 @@
-#ifndef _LYR_MM_PAGING_H
-#define _LYR_MM_PAGING_H
+#ifndef MM_PAGING_H
+#define MM_PAGING_H
 
 #include <limine.h>
 #include <stdint.h>
@@ -29,4 +29,4 @@ void paging_unmap_page(struct vas *vas, uint64_t virt);
 uint64_t paging_virt_to_phys(struct vas *vas, uint64_t virt);
 uint64_t paging_get_flags(struct vas *vas, uint64_t virt);
 
-#endif /* _LYR_MM_PAGING_H */
+#endif // MM_PAGING_H

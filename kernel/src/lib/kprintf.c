@@ -198,6 +198,24 @@ int kvsnprintf(char *buf, size_t bufsz, const char *fmt, va_list ap)
 			fmt++;
 		}
 
+		bool has_precision = false;
+		size_t precision = 0;
+
+		if (*fmt == '.') {
+			fmt++;
+			has_precision = true;
+			if (*fmt == '*') {
+				int p = va_arg(ap, int);
+				precision = (p < 0) ? 0 : (size_t)p;
+				fmt++;
+			} else {
+				while (*fmt >= '0' && *fmt <= '9') {
+					precision = (precision * 10) + (size_t)(*fmt - '0');
+					fmt++;
+				}
+			}
+		}
+
 		if (*fmt == 'l' && *(fmt + 1) == 'l') {
 			long_long = true;
 			fmt += 2;
@@ -211,9 +229,20 @@ int kvsnprintf(char *buf, size_t bufsz, const char *fmt, va_list ap)
 			const char *s = va_arg(ap, const char *);
 			size_t len = buf_strlen(s);
 
+			if (has_precision && precision < len)
+				len = precision;
+
 			if (!left_align)
 				buf_put_width(buf, bufsz, &pos, width, len, ' ');
-			buf_puts(buf, bufsz, &pos, s);
+
+			if (s == NULL) {
+				/* "(null)" already accounted for in buf_strlen */
+				buf_puts(buf, bufsz, &pos, "(null)");
+			} else {
+				for (size_t i = 0; i < len; i++)
+					buf_putc(buf, bufsz, &pos, s[i]);
+			}
+
 			if (left_align)
 				buf_put_width(buf, bufsz, &pos, width, len, ' ');
 			break;

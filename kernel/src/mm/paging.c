@@ -66,8 +66,8 @@ static uint64_t alloc_table(void)
 	uint64_t phys = page_to_phys(page);
 	memset(PHYS_TO_VIRT(phys), 0, PAGE_SIZE);
 	page_table_count++;
-	klogvv("page table alloc: phys=0x%llx count=%llu", (unsigned long long)phys,
-		   (unsigned long long)page_table_count);
+	klogvvv("page table alloc: phys=0x%llx count=%llu",
+			(unsigned long long)phys, (unsigned long long)page_table_count);
 	return phys;
 }
 
@@ -159,9 +159,9 @@ static int map_hhdm(struct limine_memmap_response *memmap)
 		if (end <= start)
 			continue;
 
-		klogvv("map hhdm: virt=0x%llx phys=0x%llx size=0x%llx",
-			   (unsigned long long)(hhdm_offset + start),
-			   (unsigned long long)start, (unsigned long long)(end - start));
+		klogvvv("map hhdm: virt=0x%llx phys=0x%llx size=0x%llx",
+				(unsigned long long)(hhdm_offset + start),
+				(unsigned long long)start, (unsigned long long)(end - start));
 		if (paging_map_range(
 				kernel_vas, hhdm_offset + start, start, end - start,
 				PAGE_PRESENT | PAGE_WRITE | PAGE_GLOBAL | PAGE_NX) != 0)
@@ -213,8 +213,9 @@ static void add_static_vad(vad_t *vad, uint64_t start, uint64_t end,
 	vad->flags = flags;
 	vad->next = NULL;
 
-	klogvv("vad add: [0x%llx,0x%llx) flags=0x%llx", (unsigned long long)start,
-		   (unsigned long long)end, (unsigned long long)flags);
+	klogvvv("vad add: [0x%llx,0x%llx) flags=0x%llx",
+			(unsigned long long)start, (unsigned long long)end,
+			(unsigned long long)flags);
 	if (vas_add(kernel_vas, vad) != 0)
 		kpanic(NULL, "paging: vad overlap for [0x%llx, 0x%llx)",
 			   (unsigned long long)start, (unsigned long long)end);
@@ -291,8 +292,8 @@ void vas_switch(vas_t *vas)
 	if (!vas || !vas->pml4)
 		kpanic(NULL, "paging: invalid vas switch");
 
-	klogvv("switch vas: pml4=0x%llx",
-		   (unsigned long long)VIRT_TO_PHYS(vas->pml4));
+	klogvvv("switch vas: pml4=0x%llx",
+			(unsigned long long)VIRT_TO_PHYS(vas->pml4));
 	write_cr3(VIRT_TO_PHYS(vas->pml4));
 	current_vas = vas;
 }
@@ -333,9 +334,9 @@ int paging_map_range(vas_t *vas, uint64_t virt, uint64_t phys, uint64_t size,
 	pte_flags = flags_to_pte(flags);
 	flush = vas == current_vas;
 
-	klogvv("map range: virt=0x%llx phys=0x%llx size=0x%llx flags=0x%llx",
-		   (unsigned long long)virt, (unsigned long long)phys,
-		   (unsigned long long)size, (unsigned long long)flags);
+	klogvvv("map range: virt=0x%llx phys=0x%llx size=0x%llx flags=0x%llx",
+			(unsigned long long)virt, (unsigned long long)phys,
+			(unsigned long long)size, (unsigned long long)flags);
 
 	while (pages > 0) {
 		ptable_t *pt = lookup_pt(vas, virt, 1, flags);
@@ -375,8 +376,8 @@ void paging_unmap_page(vas_t *vas, uint64_t virt)
 	if (!leaf)
 		return;
 
-	klogvv("unmap page: virt=0x%llx phys=0x%llx", (unsigned long long)virt,
-		   (unsigned long long)(*leaf & PAGE_ADDR_MASK));
+	klogvvv("unmap page: virt=0x%llx phys=0x%llx", (unsigned long long)virt,
+			(unsigned long long)(*leaf & PAGE_ADDR_MASK));
 	*leaf = 0;
 	if (vas == current_vas)
 		invlpg(virt);

@@ -5,9 +5,11 @@
 #include <stdint.h>
 
 #include <cpu/instr.h>
+#include <cpu/smp.h>
 #include <debug/kallsyms.h>
 #include <log/klog.h>
 #include <lib/kprintf.h>
+#include <lib/spinlock.h>
 
 struct panic_frame {
 	uint64_t next_rbp;
@@ -15,6 +17,7 @@ struct panic_frame {
 };
 
 static const size_t panic_backtrace_limit = 16;
+static spinlock_t panic_lock = SPINLOCK_INIT;
 
 static void panic_log_addr(const char *label, uint64_t addr)
 {
@@ -24,12 +27,13 @@ static void panic_log_addr(const char *label, uint64_t addr)
 	if (sym != NULL && sym->name != NULL) {
 		if (sym->size != 0) {
 			klog_ns_force("panic", "%s[<%016llx>] %s+0x%llx/0x%llx", label,
-					(unsigned long long)addr, sym->name,
-					(unsigned long long)offset, (unsigned long long)sym->size);
+						  (unsigned long long)addr, sym->name,
+						  (unsigned long long)offset,
+						  (unsigned long long)sym->size);
 		} else {
 			klog_ns_force("panic", "%s[<%016llx>] %s+0x%llx", label,
-					(unsigned long long)addr, sym->name,
-					(unsigned long long)offset);
+						  (unsigned long long)addr, sym->name,
+						  (unsigned long long)offset);
 		}
 		return;
 	}
@@ -45,17 +49,19 @@ static void panic_log_trace(size_t depth, uint64_t addr)
 	if (sym != NULL && sym->name != NULL) {
 		if (sym->size != 0) {
 			klog_ns_force("panic", "  #%zu [<%016llx>] %s+0x%llx/0x%llx", depth,
-					(unsigned long long)addr, sym->name,
-					(unsigned long long)offset, (unsigned long long)sym->size);
+						  (unsigned long long)addr, sym->name,
+						  (unsigned long long)offset,
+						  (unsigned long long)sym->size);
 		} else {
 			klog_ns_force("panic", "  #%zu [<%016llx>] %s+0x%llx", depth,
-					(unsigned long long)addr, sym->name,
-					(unsigned long long)offset);
+						  (unsigned long long)addr, sym->name,
+						  (unsigned long long)offset);
 		}
 		return;
 	}
 
-	klog_ns_force("panic", "  #%zu [<%016llx>]", depth, (unsigned long long)addr);
+	klog_ns_force("panic", "  #%zu [<%016llx>]", depth,
+				  (unsigned long long)addr);
 }
 
 static void panic_log_message(const char *fmt, va_list ap)
@@ -123,36 +129,58 @@ static void panic_dump_regs(interrupt_frame_t *regs)
 	if (regs == NULL)
 		return;
 
-	klog_ns_force("panic", "RAX: %016llx  RBX: %016llx  RCX: %016llx  RDX: %016llx",
-			(unsigned long long)regs->rax, (unsigned long long)regs->rbx,
-			(unsigned long long)regs->rcx, (unsigned long long)regs->rdx);
-	klog_ns_force("panic", "RSI: %016llx  RDI: %016llx  RBP: %016llx  RSP: %016llx",
-			(unsigned long long)regs->rsi, (unsigned long long)regs->rdi,
-			(unsigned long long)regs->rbp, (unsigned long long)regs->rsp);
-	klog_ns_force("panic", "R8:  %016llx  R9:  %016llx  R10: %016llx  R11: %016llx",
-			(unsigned long long)regs->r8, (unsigned long long)regs->r9,
-			(unsigned long long)regs->r10, (unsigned long long)regs->r11);
-	klog_ns_force("panic", "R12: %016llx  R13: %016llx  R14: %016llx  R15: %016llx",
-			(unsigned long long)regs->r12, (unsigned long long)regs->r13,
-			(unsigned long long)regs->r14, (unsigned long long)regs->r15);
-	klog_ns_force("panic", "CS:  %016llx  SS:  %016llx  DS:  %016llx  ES:  %016llx",
-			(unsigned long long)regs->cs, (unsigned long long)regs->ss,
-			(unsigned long long)regs->ds, (unsigned long long)regs->es);
-	klog_ns_force("panic", "CR0: %016llx  CR2: %016llx  CR3: %016llx  CR4: %016llx",
-			(unsigned long long)regs->cr0, (unsigned long long)regs->cr2,
-			(unsigned long long)regs->cr3, (unsigned long long)regs->cr4);
+	klog_ns_force("panic",
+				  "RAX: %016llx  RBX: %016llx  RCX: %016llx  RDX: %016llx",
+				  (unsigned long long)regs->rax, (unsigned long long)regs->rbx,
+				  (unsigned long long)regs->rcx, (unsigned long long)regs->rdx);
+	klog_ns_force("panic",
+				  "RSI: %016llx  RDI: %016llx  RBP: %016llx  RSP: %016llx",
+				  (unsigned long long)regs->rsi, (unsigned long long)regs->rdi,
+				  (unsigned long long)regs->rbp, (unsigned long long)regs->rsp);
+	klog_ns_force("panic",
+				  "R8:  %016llx  R9:  %016llx  R10: %016llx  R11: %016llx",
+				  (unsigned long long)regs->r8, (unsigned long long)regs->r9,
+				  (unsigned long long)regs->r10, (unsigned long long)regs->r11);
+	klog_ns_force("panic",
+				  "R12: %016llx  R13: %016llx  R14: %016llx  R15: %016llx",
+				  (unsigned long long)regs->r12, (unsigned long long)regs->r13,
+				  (unsigned long long)regs->r14, (unsigned long long)regs->r15);
+	klog_ns_force("panic",
+				  "CS:  %016llx  SS:  %016llx  DS:  %016llx  ES:  %016llx",
+				  (unsigned long long)regs->cs, (unsigned long long)regs->ss,
+				  (unsigned long long)regs->ds, (unsigned long long)regs->es);
+	klog_ns_force("panic",
+				  "CR0: %016llx  CR2: %016llx  CR3: %016llx  CR4: %016llx",
+				  (unsigned long long)regs->cr0, (unsigned long long)regs->cr2,
+				  (unsigned long long)regs->cr3, (unsigned long long)regs->cr4);
 	klog_ns_force("panic", "RFLAGS: %016llx  ERR: %016llx  VEC: %llu",
-			(unsigned long long)regs->rflags, (unsigned long long)regs->err,
-			(unsigned long long)regs->vector);
+				  (unsigned long long)regs->rflags,
+				  (unsigned long long)regs->err,
+				  (unsigned long long)regs->vector);
 	panic_log_addr("RIP: ", regs->rip);
-	klog_ns_force("panic", "CPU: BSP");
+}
+
+static void panic_dump_cpu(void)
+{
+	struct cpu_info *cpu = cpu_current();
+
+	if (cpu == NULL) {
+		klog_ns_force("panic", "CPU: unknown");
+		return;
+	}
+
+	klog_ns_force("panic", "CPU: cpu%u lapic=%u acpi=%u%s", cpu->index,
+				  cpu->lapic_id, cpu->processor_id,
+				  cpu->is_bsp ? " (bsp)" : "");
 }
 
 void vkpanic(interrupt_frame_t *regs, const char *fmt, va_list ap)
 {
 	cli();
+	spinlock_lock(&panic_lock);
 
 	panic_log_message(fmt, ap);
+	panic_dump_cpu();
 	panic_dump_regs(regs);
 	panic_dump_backtrace(regs);
 	klog_ns_force("panic", "---[ end Kernel panic ]---");

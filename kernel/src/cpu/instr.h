@@ -132,6 +132,11 @@ static inline void write_fs_base(uint64_t base)
 	wrmsr(0xC0000100, base);
 }
 
+static inline uint64_t read_fs_base(void)
+{
+	return rdmsr(0xC0000100);
+}
+
 static inline void fninit(void)
 {
 	__asm__ volatile("fninit");

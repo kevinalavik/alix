@@ -12,12 +12,15 @@
 #define KLOG_NS "alix"
 #include <log/klog.h>
 #include <cpu/gdt.h>
+#include <cpu/smp.h>
 #include <flanterm.h>
 #include <flanterm_backends/fb.h>
 #include <lib/kprintf.h>
 #include <cpu/idt.h>
 #include <mm/mm.h>
 #include <lib/string.h>
+#include <sys/acpi.h>
+#include <acpi/madt.h>
 
 uint64_t boot_tsc = 0;
 struct flanterm_context *ft_ctx = NULL;
@@ -83,12 +86,33 @@ void kmain(void)
 		  (unsigned long long)paging_mode_request.response->mode);
 	gdt_init();
 	idt_init();
+
+	/* memory stuff*/
 	pfndb_init(memmap_request.response);
 	pmm_init();
 	paging_init(memmap_request.response, framebuffer,
 				executable_address_request.response);
 	klog("kernel VAS: %p (pml4=%p)", kernel_vas, kernel_vas->pml4);
 	kheap_init();
+
+	/* smp stuff and apic */
+	if (mp_request.response == NULL) {
+		kpanic(NULL, "no SMP information");
+	}
+
+	smp_init(mp_request.response);
+	smp_wait_all_online();
+
+	if (!cpu_current()->is_bsp) {
+		nointloop();
+		__builtin_unreachable();
+	}
+
+	if (rsdp_request.response == NULL) {
+		kpanic(NULL, "no RSDP information");
+	}
+	acpi_init(rsdp_request.response);
+	madt_init();
 
 	klog("--------------------------------------------------");
 	klog("kernel v" ALIX_VERSION " initialized.");

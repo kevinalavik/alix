@@ -4,14 +4,14 @@ menu "General setup"
 
 config KLOG_VERBOSITY
 	int "Kernel log verbosity"
-	default 1
+	default 2
 	range 0 3
 	help
 	  Controls normal boot-time log volume.
 
 	  0 = quiet, force logs only
 	  1 = normal subsystem summaries
-	  2 = verbose diagnostics
-	  3 = very verbose diagnostics
+	  2 = verbose diagnostics (`klogv` and `klogvv`)
+	  3 = trace diagnostics (`klogvvv`)
 
 endmenu

@@ -1,5 +1,5 @@
-#ifndef _LYR_MM_VMM_H
-#define _LYR_MM_VMM_H
+#ifndef MM_VMM_H
+#define MM_VMM_H
 
 #include <stdint.h>
 #include <stddef.h>
@@ -53,4 +53,4 @@ vas_t *vas_clone(vas_t *src);
 
 int vas_add(vas_t *vas, vad_t *vad);
 
-#endif /* _LYR_MM_VMM_H */
+#endif // MM_VMM_H

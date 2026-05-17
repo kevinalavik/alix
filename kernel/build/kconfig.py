@@ -44,6 +44,7 @@ def write_outputs(kconf, config_path, header_path, write_config):
         kconf.write_config(config_path)
         touch(config_path)
 
+    os.makedirs(os.path.dirname(header_path) or ".", exist_ok=True)
     kconf.write_autoconf(header_path)
     touch(header_path)
 

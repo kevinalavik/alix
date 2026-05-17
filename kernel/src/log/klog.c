@@ -8,6 +8,7 @@
 #include <api/time.h>
 #include <dev/uart.h>
 #include <lib/kprintf.h>
+#include <lib/spinlock.h>
 #include <lib/string.h>
 #include <core/alix.h>
 
@@ -17,6 +18,7 @@ static size_t klog_head;
 static size_t klog_count;
 static uint64_t klog_next_seq;
 static bool klog_ready;
+static spinlock_t klog_lock = SPINLOCK_INIT;
 
 static void klog_buf_putc(char *buf, size_t bufsz, size_t *pos, char c)
 {
@@ -104,16 +106,17 @@ void kvlog_write_level(int level, const char *ns, const char *fmt, va_list ap)
 	if (ns == NULL || ns[0] == '\0')
 		ns = "kernel";
 
-	rec.seq = klog_next_seq;
 	rec.time_us = time_uptime_us();
 
 	strlcpy(rec.ns, ns, sizeof(rec.ns));
 	kvsnprintf(rec.msg, sizeof(rec.msg), fmt, ap);
 
+	spinlock_lock(&klog_lock);
+	rec.seq = klog_next_seq;
 	if (klog_ready)
 		klog_ring_push(rec.time_us, rec.ns, rec.msg);
-
 	klog_emit(&rec);
+	spinlock_unlock(&klog_lock);
 }
 
 void kvlog_write(const char *ns, const char *fmt, va_list ap)

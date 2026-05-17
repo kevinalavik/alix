@@ -1,6 +1,6 @@
 .SUFFIXES:
 
-QEMUFLAGS := -m 2G -serial stdio
+QEMUFLAGS := -smp 4 -m 2G -serial stdio
 
 override IMAGE_NAME := alix
 
