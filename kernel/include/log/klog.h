@@ -9,13 +9,8 @@
 #define KLOG_NS_MAX 32
 #define KLOG_MSG_MAX 192
 
-#define KLOG_LEVEL_ALWAYS 0
-#define KLOG_LEVEL_INFO 1
-#define KLOG_LEVEL_VERBOSE 2
-#define KLOG_LEVEL_VVERBOSE 3
-
-#ifndef CONFIG_KLOG_VERBOSITY
-#define CONFIG_KLOG_VERBOSITY KLOG_LEVEL_INFO
+#ifndef CONFIG_KLOG_TRACE
+#define CONFIG_KLOG_TRACE 0
 #endif
 
 #ifndef KLOG_NS
@@ -31,31 +26,25 @@ struct klog_record {
 
 void klog_init(void);
 
-void klog_write_level(int level, const char *ns, const char *fmt, ...);
-void kvlog_write_level(int level, const char *ns, const char *fmt, va_list ap);
+void klog_force_write(const char *ns, const char *fmt, ...);
+void kvlog_force_write(const char *ns, const char *fmt, va_list ap);
 void klog_write(const char *ns, const char *fmt, ...);
 void kvlog_write(const char *ns, const char *fmt, va_list ap);
+void klog_trace_write(const char *ns, const char *fmt, ...);
+void kvlog_trace_write(const char *ns, const char *fmt, va_list ap);
 
 #define klogf(fmt, ...) \
-	klog_write_level(KLOG_LEVEL_ALWAYS, KLOG_NS, fmt, ##__VA_ARGS__)
+	klog_force_write(KLOG_NS, fmt, ##__VA_ARGS__)
 #define klog(fmt, ...) \
-	klog_write_level(KLOG_LEVEL_INFO, KLOG_NS, fmt, ##__VA_ARGS__)
-#define klogv(fmt, ...) \
-	klog_write_level(KLOG_LEVEL_VERBOSE, KLOG_NS, fmt, ##__VA_ARGS__)
-#define klogvv(fmt, ...) \
-	klog_write_level(KLOG_LEVEL_VVERBOSE, KLOG_NS, fmt, ##__VA_ARGS__)
-#define klogvvv(fmt, ...) \
-	klog_write_level(KLOG_LEVEL_VVERBOSE, KLOG_NS, fmt, ##__VA_ARGS__)
+	klog_write(KLOG_NS, fmt, ##__VA_ARGS__)
+#define ktrace(fmt, ...) \
+	klog_trace_write(KLOG_NS, fmt, ##__VA_ARGS__)
 
 #define klog_ns(ns, fmt, ...) \
-	klog_write_level(KLOG_LEVEL_INFO, ns, fmt, ##__VA_ARGS__)
-#define klog_ns_v(ns, fmt, ...) \
-	klog_write_level(KLOG_LEVEL_VERBOSE, ns, fmt, ##__VA_ARGS__)
-#define klog_ns_vv(ns, fmt, ...) \
-	klog_write_level(KLOG_LEVEL_VERBOSE, ns, fmt, ##__VA_ARGS__)
-#define klog_ns_vvv(ns, fmt, ...) \
-	klog_write_level(KLOG_LEVEL_VVERBOSE, ns, fmt, ##__VA_ARGS__)
+	klog_write(ns, fmt, ##__VA_ARGS__)
+#define ktrace_ns(ns, fmt, ...) \
+	klog_trace_write(ns, fmt, ##__VA_ARGS__)
 #define klog_ns_force(ns, fmt, ...) \
-	klog_write_level(KLOG_LEVEL_ALWAYS, ns, fmt, ##__VA_ARGS__)
+	klog_force_write(ns, fmt, ##__VA_ARGS__)
 
 #endif // LOG_KLOG_H

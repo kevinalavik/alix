@@ -71,7 +71,7 @@ static slab_t *slab_create(slab_cache_t *cache)
 		*slot = (i + 1 < total) ? (base + (i + 1) * cache->obj_size) : NULL;
 	}
 
-	klogvv("slab create cache=%s size=%u align=%u page=0x%llx objs=%u",
+	ktrace("slab create cache=%s size=%u align=%u page=0x%llx objs=%u",
 		   cache->name, cache->obj_size, cache->obj_align,
 		   (unsigned long long)page_to_phys(page), total);
 	return slab;
@@ -82,7 +82,7 @@ static void slab_destroy(slab_t *slab)
 	page_t *page = slab->page;
 	slab_cache_t *cache = (slab_cache_t *)(uintptr_t)page->private;
 
-	klogvv("slab destroy cache=%s page=0x%llx inuse=%u/%u",
+	ktrace("slab destroy cache=%s page=0x%llx inuse=%u/%u",
 		   cache ? cache->name : "?", (unsigned long long)page_to_phys(page),
 		   slab->inuse, slab->total);
 	ClearPageFlag(page, PAGE_SLAB);
@@ -127,8 +127,8 @@ slab_cache_t *slab_cache_create(const char *name, uint32_t size, uint32_t align)
 	cache->full = NULL;
 	cache->alloc_count = 0;
 	cache->free_count = 0;
-	klogv("cache create %s size=%u align=%u", name, cache->obj_size,
-		  cache->obj_align);
+	klog("cache create %s size=%u align=%u", name, cache->obj_size,
+		 cache->obj_align);
 	return cache;
 }
 
@@ -166,11 +166,11 @@ void *slab_alloc(slab_cache_t *cache)
 	if (!slab->freelist) {
 		slab_list_remove(&cache->partial, slab);
 		slab_list_push(&cache->full, slab);
-		klogvv("slab full cache=%s page=0x%llx", cache->name,
+		ktrace("slab full cache=%s page=0x%llx", cache->name,
 			   (unsigned long long)page_to_phys(slab->page));
 	}
 
-	klogvv("alloc cache=%s size=%u ptr=%p inuse=%u/%u", cache->name,
+	ktrace("alloc cache=%s size=%u ptr=%p inuse=%u/%u", cache->name,
 		   cache->obj_size, obj, slab->inuse, slab->total);
 	return obj;
 }
@@ -185,7 +185,7 @@ void slab_free(slab_cache_t *cache, void *ptr)
 	if (was_full) {
 		slab_list_remove(&cache->full, slab);
 		slab_list_push(&cache->partial, slab);
-		klogvv("slab partial cache=%s page=0x%llx", cache->name,
+		ktrace("slab partial cache=%s page=0x%llx", cache->name,
 			   (unsigned long long)page_to_phys(slab->page));
 	}
 
@@ -193,7 +193,7 @@ void slab_free(slab_cache_t *cache, void *ptr)
 	slab->freelist = ptr;
 	slab->inuse--;
 	cache->free_count++;
-	klogvv("free cache=%s ptr=%p inuse=%u/%u", cache->name, ptr, slab->inuse,
+	ktrace("free cache=%s ptr=%p inuse=%u/%u", cache->name, ptr, slab->inuse,
 		   slab->total);
 }
 
@@ -261,14 +261,14 @@ void *kmalloc(uint64_t size)
 		hdr->order = order;
 		page->private = LARGE_PAGE_TAG | order;
 		ptr = (uint8_t *)hdr + sizeof(large_hdr_t);
-		klogvv("large alloc size=%llu order=%u ptr=%p phys=0x%llx",
+		ktrace("large alloc size=%llu order=%u ptr=%p phys=0x%llx",
 			   (unsigned long long)size, order, ptr,
 			   (unsigned long long)page_to_phys(page));
 	}
 
 	if (ptr) {
 		total_alloc_count++;
-		klogvv("kmalloc size=%llu ptr=%p allocs=%llu", (unsigned long long)size,
+		ktrace("kmalloc size=%llu ptr=%p allocs=%llu", (unsigned long long)size,
 			   ptr, (unsigned long long)total_alloc_count);
 	}
 
@@ -343,15 +343,15 @@ void kfree(void *ptr)
 				   ptr);
 		hdr->magic = 0;
 		page->private = 0;
-		klogv("large free ptr=%p size=%llu order=%u", ptr,
-			  (unsigned long long)hdr->size, hdr->order);
+		ktrace("large free ptr=%p size=%llu order=%u", ptr,
+			   (unsigned long long)hdr->size, hdr->order);
 		pmm_free(page);
 	} else {
 		kpanic(NULL, "kfree: pointer %p is not a kheap allocation", ptr);
 	}
 
 	total_free_count++;
-	klogvv("kfree ptr=%p frees=%llu", ptr,
+	ktrace("kfree ptr=%p frees=%llu", ptr,
 		   (unsigned long long)total_free_count);
 }
 

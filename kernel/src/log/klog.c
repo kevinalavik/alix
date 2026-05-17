@@ -20,6 +20,29 @@ static uint64_t klog_next_seq;
 static bool klog_ready;
 static spinlock_t klog_lock = SPINLOCK_INIT;
 
+static void klog_emit(const struct klog_record *rec);
+static void klog_ring_push(uint64_t time_us, const char *ns, const char *msg);
+
+static void kvlog_write_impl(const char *ns, const char *fmt, va_list ap)
+{
+	struct klog_record rec;
+
+	if (ns == NULL || ns[0] == '\0')
+		ns = "kernel";
+
+	rec.time_us = time_uptime_us();
+
+	strlcpy(rec.ns, ns, sizeof(rec.ns));
+	kvsnprintf(rec.msg, sizeof(rec.msg), fmt, ap);
+
+	spinlock_lock(&klog_lock);
+	rec.seq = klog_next_seq;
+	if (klog_ready)
+		klog_ring_push(rec.time_us, rec.ns, rec.msg);
+	klog_emit(&rec);
+	spinlock_unlock(&klog_lock);
+}
+
 static void klog_buf_putc(char *buf, size_t bufsz, size_t *pos, char c)
 {
 	if (*pos + 1 < bufsz)
@@ -96,40 +119,33 @@ void klog_init(void)
 	klog_ready = true;
 }
 
-void kvlog_write_level(int level, const char *ns, const char *fmt, va_list ap)
+void kvlog_force_write(const char *ns, const char *fmt, va_list ap)
 {
-	struct klog_record rec;
-
-	if (level > CONFIG_KLOG_VERBOSITY)
-		return;
-
-	if (ns == NULL || ns[0] == '\0')
-		ns = "kernel";
-
-	rec.time_us = time_uptime_us();
-
-	strlcpy(rec.ns, ns, sizeof(rec.ns));
-	kvsnprintf(rec.msg, sizeof(rec.msg), fmt, ap);
-
-	spinlock_lock(&klog_lock);
-	rec.seq = klog_next_seq;
-	if (klog_ready)
-		klog_ring_push(rec.time_us, rec.ns, rec.msg);
-	klog_emit(&rec);
-	spinlock_unlock(&klog_lock);
+	kvlog_write_impl(ns, fmt, ap);
 }
 
 void kvlog_write(const char *ns, const char *fmt, va_list ap)
 {
-	kvlog_write_level(KLOG_LEVEL_INFO, ns, fmt, ap);
+	kvlog_write_impl(ns, fmt, ap);
 }
 
-void klog_write_level(int level, const char *ns, const char *fmt, ...)
+void kvlog_trace_write(const char *ns, const char *fmt, va_list ap)
+{
+#if CONFIG_KLOG_TRACE
+	kvlog_write_impl(ns, fmt, ap);
+#else
+	(void)ns;
+	(void)fmt;
+	(void)ap;
+#endif
+}
+
+void klog_force_write(const char *ns, const char *fmt, ...)
 {
 	va_list ap;
 
 	va_start(ap, fmt);
-	kvlog_write_level(level, ns, fmt, ap);
+	kvlog_force_write(ns, fmt, ap);
 	va_end(ap);
 }
 
@@ -138,6 +154,15 @@ void klog_write(const char *ns, const char *fmt, ...)
 	va_list ap;
 
 	va_start(ap, fmt);
-	kvlog_write_level(KLOG_LEVEL_INFO, ns, fmt, ap);
+	kvlog_write(ns, fmt, ap);
+	va_end(ap);
+}
+
+void klog_trace_write(const char *ns, const char *fmt, ...)
+{
+	va_list ap;
+
+	va_start(ap, fmt);
+	kvlog_trace_write(ns, fmt, ap);
 	va_end(ap);
 }

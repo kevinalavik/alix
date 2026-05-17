@@ -40,10 +40,10 @@ static void calc_max_pfn(struct limine_memmap_response *memmap)
 
 	for (uint64_t i = 0; i < memmap->entry_count; i++) {
 		struct limine_memmap_entry *e = memmap->entries[i];
-		klogvv("memmap[%llu]: %s base=0x%llx len=0x%llx end=0x%llx",
-			   (unsigned long long)i, memmap_type_name(e->type),
-			   (unsigned long long)e->base, (unsigned long long)e->length,
-			   (unsigned long long)(e->base + e->length));
+		klog("memmap[%llu]: %s base=0x%llx len=0x%llx end=0x%llx",
+			 (unsigned long long)i, memmap_type_name(e->type),
+			 (unsigned long long)e->base, (unsigned long long)e->length,
+			 (unsigned long long)(e->base + e->length));
 		if (e->type != LIMINE_MEMMAP_USABLE)
 			continue;
 
@@ -66,9 +66,9 @@ static void reserve_pfndb_storage(struct limine_memmap_response *memmap)
 		pfndb_phys = e->base;
 		e->base += size;
 		e->length -= size;
-		klogv("reserved db storage: phys=0x%llx size=0x%llx pages=%llu",
-			  (unsigned long long)pfndb_phys, (unsigned long long)size,
-			  (unsigned long long)(size >> PAGE_SHIFT));
+		klog("reserved db storage: phys=0x%llx size=0x%llx pages=%llu",
+			 (unsigned long long)pfndb_phys, (unsigned long long)size,
+			 (unsigned long long)(size >> PAGE_SHIFT));
 		return;
 	}
 
@@ -89,7 +89,7 @@ void pfndb_mark_range(uint64_t base, uint64_t length, uint64_t new_flags)
 	if (end_pfn > max_pfn + 1)
 		end_pfn = max_pfn + 1;
 
-	klogvv("mark pfn [0x%llx,0x%llx) flags=0x%llx",
+	ktrace("mark pfn [0x%llx,0x%llx) flags=0x%llx",
 		   (unsigned long long)start_pfn, (unsigned long long)end_pfn,
 		   (unsigned long long)new_flags);
 
@@ -125,8 +125,8 @@ void pfndb_init(struct limine_memmap_response *memmap)
 	}
 
 	klog("pages=%llu db=0x%llx", max_pfn + 1, pfndb_phys);
-	klogv("max_pfn=0x%llx usable=%llu entry=%zu", max_pfn, usable_pages,
-		  sizeof(page_t));
+	klog("max_pfn=0x%llx usable=%llu entry=%zu", max_pfn, usable_pages,
+		 sizeof(page_t));
 }
 
 page_t *pfndb_getdb(void)

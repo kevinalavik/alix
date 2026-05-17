@@ -15,8 +15,6 @@
 #define SCHED_CONTEXT_QWORDS 16
 #define SCHED_CONTEXT_THREAD_ARG_SLOT 5
 #define SCHED_STACK_QWORDS (SCHED_STACK_SIZE / sizeof(uint64_t))
-#define SCHED_IDLE_PROC_NAME "idle"
-#define SCHED_IDLE_THREAD_NAME "idle"
 
 typedef char sched_tcb_rsp_offset_must_match
 	[(offsetof(tcb_t, rsp) == SCHED_TCB_RSP_OFFSET) ? 1 : -1];
@@ -247,9 +245,9 @@ pcb_t *spawn_proc(const char *name, proc_type_t type, vas_t *vas)
 		return NULL;
 	}
 
-	klogv("spawned %s process %llu (%s) ppid=%llu",
-		  sched_proc_type_name(proc->type), (unsigned long long)proc->pid,
-		  proc->name, (unsigned long long)proc->ppid);
+	ktrace("spawned %s process %llu (%s) ppid=%llu",
+		   sched_proc_type_name(proc->type), (unsigned long long)proc->pid,
+		   proc->name, (unsigned long long)proc->ppid);
 	return proc;
 }
 
@@ -311,10 +309,10 @@ tcb_t *spawn_thread(const char *name, pcb_t *pcb, sched_entry_t entry,
 	rq_push_back(&cpu->rq, &thread->rq_node, thread);
 	cpu->sched_thread_count++;
 	sched_cpu_unlock(cpu);
-	klogv("spawned %s thread %llu (%s) for pid=%llu on CPU%u status=%s",
-		  sched_proc_type_name(pcb->type), (unsigned long long)thread->tid,
-		  thread->name, (unsigned long long)pcb->pid, cpu->index,
-		  sched_thread_status_name(thread->status));
+	ktrace("spawned %s thread %llu (%s) for pid=%llu on CPU%u status=%s",
+		   sched_proc_type_name(pcb->type), (unsigned long long)thread->tid,
+		   thread->name, (unsigned long long)pcb->pid, cpu->index,
+		   sched_thread_status_name(thread->status));
 	return thread;
 }
 
@@ -416,8 +414,8 @@ static void sched_free_proc(pcb_t *proc)
 	if (PROC_IS_USER(proc) && proc->vas)
 		vas_destroy(proc->vas);
 
-	klogv("reaped %s process %llu (%s)", sched_proc_type_name(proc->type),
-		  (unsigned long long)proc->pid, proc->name);
+	ktrace("reaped %s process %llu (%s)", sched_proc_type_name(proc->type),
+		   (unsigned long long)proc->pid, proc->name);
 	kfree(proc);
 }
 
@@ -440,8 +438,8 @@ static void sched_free_thread(tcb_t *thread)
 	proc = thread->parent;
 	sched_proc_unlink_thread(proc, thread);
 
-	klogv("reaped thread %llu (%s)", (unsigned long long)thread->tid,
-		  thread->name);
+	ktrace("reaped thread %llu (%s)", (unsigned long long)thread->tid,
+		   thread->name);
 
 	if (thread->stack)
 		kfree(thread->stack);
@@ -634,8 +632,8 @@ void sched_exit(void)
 	if (current == cpu->idle_thread)
 		kpanic(NULL, "sched: idle thread tried to exit");
 
-	klogv("thread %llu (%s) exiting", (unsigned long long)current->tid,
-		  current->name);
+	ktrace("thread %llu (%s) exiting", (unsigned long long)current->tid,
+		   current->name);
 	sched_cpu_lock(cpu);
 	sched_queue_zombie_locked(cpu, current);
 
@@ -650,43 +648,6 @@ void sched_exit(void)
 
 	context_switch(current, next);
 	kpanic(NULL, "sched: zombie thread resumed");
-}
-
-static void sched_init_idle_proc(pcb_t *proc, tcb_t *thread)
-{
-	proc->pid = SCHED_IDLE_PID;
-	proc->ppid = SCHED_IDLE_PID;
-	strlcpy(proc->name, SCHED_IDLE_PROC_NAME, sizeof(proc->name));
-	proc->type = PROC_IDLE;
-	proc->thread = thread;
-	proc->next = NULL;
-	proc->vas = kernel_vas;
-	proc->thread_count = 1;
-}
-
-static void sched_init_idle_thread(tcb_t *thread, pcb_t *proc,
-								   uint32_t cpu_index)
-{
-	thread->tid = SCHED_IDLE_PID;
-	strlcpy(thread->name, SCHED_IDLE_THREAD_NAME, sizeof(thread->name));
-	thread->status = THREAD_RUNNING;
-	SCHED_TICK_RESET(thread);
-	thread->total_ticks = 0;
-	thread->rip = (uint64_t)(uintptr_t)sched_idle;
-	rq_node_init(&thread->rq_node, thread);
-	thread->next = NULL;
-	thread->parent = proc;
-	thread->entry = sched_idle;
-	thread->arg = NULL;
-	thread->stack = idle_stacks[cpu_index];
-	thread->stack_size = sizeof(idle_stacks[cpu_index]);
-	thread->cs = GDT_KERNEL_CODE_SELECTOR;
-	thread->ss = GDT_KERNEL_DATA_SELECTOR;
-	thread->rflags = SCHED_KERNEL_RFLAGS;
-	thread->cpu_index = cpu_index;
-	thread->rsp =
-		sched_make_stack(sched_thread_trampoline, thread,
-						 idle_stacks[cpu_index], SCHED_IDLE_STACK_QWORDS);
 }
 
 void sched_init(void)
@@ -709,10 +670,37 @@ void sched_init(void)
 	rq_init(&zombie_rq[cpu->index]);
 	cpu->sched_thread_count = 0;
 
-	sched_init_idle_proc(idle_proc, idle_thread);
-	sched_init_idle_thread(idle_thread, idle_proc, cpu->index);
+	idle_proc->pid = SCHED_IDLE_PID;
+	idle_proc->ppid = SCHED_IDLE_PID;
+	strlcpy(idle_proc->name, "idle", sizeof(idle_proc->name));
+	idle_proc->type = PROC_IDLE;
+	idle_proc->thread = idle_thread;
+	idle_proc->next = NULL;
+	idle_proc->vas = kernel_vas;
+	idle_proc->thread_count = 1;
+
+	idle_thread->tid = SCHED_IDLE_PID;
+	strlcpy(idle_thread->name, "idle", sizeof(idle_thread->name));
+	idle_thread->status = THREAD_RUNNING;
+	SCHED_TICK_RESET(idle_thread);
+	idle_thread->total_ticks = 0;
+	idle_thread->rip = (uint64_t)(uintptr_t)sched_idle;
+	rq_node_init(&idle_thread->rq_node, idle_thread);
+	idle_thread->next = NULL;
+	idle_thread->parent = idle_proc;
+	idle_thread->entry = sched_idle;
+	idle_thread->arg = NULL;
+	idle_thread->stack = idle_stacks[cpu->index];
+	idle_thread->stack_size = sizeof(idle_stacks[cpu->index]);
+	idle_thread->cs = GDT_KERNEL_CODE_SELECTOR;
+	idle_thread->ss = GDT_KERNEL_DATA_SELECTOR;
+	idle_thread->rflags = SCHED_KERNEL_RFLAGS;
+	idle_thread->cpu_index = cpu->index;
+	idle_thread->rsp =
+		sched_make_stack(sched_thread_trampoline, idle_thread,
+						 idle_stacks[cpu->index], SCHED_IDLE_STACK_QWORDS);
 
 	cpu->idle_thread = idle_thread;
 	cpu->current_thread = idle_thread;
-	klogv("setup idle process for CPU%d", cpu->index);
+	klog("setup idle process for CPU%d", cpu->index);
 }

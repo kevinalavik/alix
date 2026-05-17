@@ -77,15 +77,15 @@ void kmain(void)
 
 	boot_tsc = rdtsc();
 	klog_init();
-	klogv("framebuffer: %llux%llu pitch=%llu bpp=%u addr=%p",
-		  (unsigned long long)framebuffer->width,
-		  (unsigned long long)framebuffer->height,
-		  (unsigned long long)framebuffer->pitch, framebuffer->bpp,
-		  framebuffer->address);
+	klog("framebuffer: %llux%llu pitch=%llu bpp=%u addr=%p",
+		 (unsigned long long)framebuffer->width,
+		 (unsigned long long)framebuffer->height,
+		 (unsigned long long)framebuffer->pitch, framebuffer->bpp,
+		 framebuffer->address);
 
-	klogv("hhdm offset=%p", (void *)hhdm_offset);
-	klogv("limine paging mode=%llu",
-		  (unsigned long long)paging_mode_request.response->mode);
+	klog("hhdm offset=%p", (void *)hhdm_offset);
+	klog("limine paging mode=%llu",
+		 (unsigned long long)paging_mode_request.response->mode);
 	gdt_init();
 	idt_init();
 

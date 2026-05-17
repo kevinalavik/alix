@@ -9,38 +9,38 @@
 #define IDT_TRAP 0xF
 #define IDT_INTERRUPT 0xE
 
-#define IDT_EXCEPTION_LIST(X) \
-	X(0, "Division By Zero") \
-	X(1, "Debug") \
-	X(2, "NMI") \
-	X(3, "Breakpoint") \
-	X(4, "Overflow") \
-	X(5, "Bound Range Exceeded") \
-	X(6, "Invalid Opcode") \
-	X(7, "Device Not Available") \
-	X(8, "Double Fault") \
-	X(9, "Reserved") \
-	X(10, "Invalid TSS") \
-	X(11, "Segment Not Present") \
-	X(12, "Stack-Segment Fault") \
+#define IDT_EXCEPTION_LIST(X)         \
+	X(0, "Division By Zero")          \
+	X(1, "Debug")                     \
+	X(2, "NMI")                       \
+	X(3, "Breakpoint")                \
+	X(4, "Overflow")                  \
+	X(5, "Bound Range Exceeded")      \
+	X(6, "Invalid Opcode")            \
+	X(7, "Device Not Available")      \
+	X(8, "Double Fault")              \
+	X(9, "Reserved")                  \
+	X(10, "Invalid TSS")              \
+	X(11, "Segment Not Present")      \
+	X(12, "Stack-Segment Fault")      \
 	X(13, "General Protection Fault") \
-	X(14, "Page Fault") \
-	X(15, "Reserved") \
-	X(16, "X87 Exception") \
-	X(17, "Alignment Check") \
-	X(18, "Machine Check") \
-	X(19, "SIMD Exception") \
+	X(14, "Page Fault")               \
+	X(15, "Reserved")                 \
+	X(16, "X87 Exception")            \
+	X(17, "Alignment Check")          \
+	X(18, "Machine Check")            \
+	X(19, "SIMD Exception")           \
 	X(20, "Virtualization Exception") \
-	X(21, "Control Protection") \
-	X(22, "Reserved") \
-	X(23, "Reserved") \
-	X(24, "Reserved") \
-	X(25, "Reserved") \
-	X(26, "Reserved") \
-	X(27, "Reserved") \
-	X(28, "Hypervisor Injection") \
-	X(29, "VMM Communication") \
-	X(30, "Security") \
+	X(21, "Control Protection")       \
+	X(22, "Reserved")                 \
+	X(23, "Reserved")                 \
+	X(24, "Reserved")                 \
+	X(25, "Reserved")                 \
+	X(26, "Reserved")                 \
+	X(27, "Reserved")                 \
+	X(28, "Hypervisor Injection")     \
+	X(29, "VMM Communication")        \
+	X(30, "Security")                 \
 	X(31, "Reserved")
 
 #define IRQ_VECTOR_COUNT 256
@@ -128,12 +128,12 @@ static uint64_t idt_desc_base(const idt_entry_t *desc)
 
 static void idt_dump(void)
 {
-	klogvv("idtr base=0x%016llx limit=0x%04x", (unsigned long long)idtr.base,
-		   idtr.limit);
+	klog("idtr base=0x%016llx limit=0x%04x", (unsigned long long)idtr.base,
+		 idtr.limit);
 
 	for (uint32_t v = 0; v < 256; v++) {
 		idt_entry_t *desc = &idt[v];
-		klogvv("vec=%03u base=0x%016llx cs=0x%04x ist=%u type=0x%x dpl=%u p=%u",
+		ktrace("vec=%03u base=0x%016llx cs=0x%04x ist=%u type=0x%x dpl=%u p=%u",
 			   v, (unsigned long long)idt_desc_base(desc), desc->codeseg,
 			   desc->ist & 0x7, desc->flags & 0xf, (desc->flags >> 5) & 0x3,
 			   !!(desc->flags & 0x80));
@@ -153,7 +153,7 @@ void idt_init(void)
 	idt_set_desc(&idt[0x80], (uint64_t)isr_stubs[0x80], IDT_TRAP, 3);
 	idt_dump();
 	__asm__ volatile("lidt %0" ::"m"(idtr));
-	klogvv("loaded: 256 vectors");
+	ktrace("loaded: 256 vectors");
 }
 
 interrupt_frame_t *irq_dispatch(uint8_t irq, interrupt_frame_t *frame)

@@ -128,7 +128,7 @@ void ioapic_write_red(uint32_t gsi, uint8_t vec, uint8_t delivery_mode,
 	ioapic_write(base, IOAPICREDTBLL(pin), redent.bytes.low);
 	ioapic_write(base, IOAPICREDTBLH(pin), redent.bytes.high);
 
-	klogvv("IOAPIC redir: vec=%u gsi=%u dest_lapic=%u mode=phys", vec, gsi,
+	ktrace("IOAPIC redir: vec=%u gsi=%u dest_lapic=%u mode=phys", vec, gsi,
 		   dest);
 }
 
@@ -160,13 +160,13 @@ void apic_init(void)
 		uintptr_t base = (uintptr_t)PHYS_TO_VIRT(ioapics[i]->addr);
 		uint8_t maxreds;
 
-		klogvv("Mapping I/O APIC #%zu (phys 0x%llx -> virt 0x%llx)", i,
+		ktrace("Mapping I/O APIC #%zu (phys 0x%llx -> virt 0x%llx)", i,
 			   ioapics[i]->addr, (uint64_t)base);
 		paging_map_page(kernel_vas, base, ioapics[i]->addr,
 						PAGE_PRESENT | PAGE_WRITE);
 
 		maxreds = (ioapic_read(base, IOAPICVER) >> 16) & 0xFF;
-		klogv("Masking %u redirection entries for I/O APIC #%zu", maxreds, i);
+		klog("Masking %u redirection entries for I/O APIC #%zu", maxreds, i);
 
 		for (uint8_t n = 0; n < maxreds; n++) {
 			ioapic_write(base, IOAPICREDTBLL(n), 0x10000);

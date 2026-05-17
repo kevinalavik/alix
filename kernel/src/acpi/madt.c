@@ -16,7 +16,7 @@
 			klog(overflow_msg, overflow_arg);                                     \
 			break;                                                                \
 		}                                                                         \
-		klogv(success_msg, __VA_ARGS__);                                          \
+		klog(success_msg, __VA_ARGS__);                                           \
 		break;                                                                    \
 	}
 
@@ -56,7 +56,7 @@ void madt_init()
 	}
 
 	if (madt->flags & 1) {
-		klogv("Masking 8259 PIC");
+		klog("Masking 8259 PIC");
 		outb(0x21, 0xff);
 		outb(0xa1, 0xff);
 	}
@@ -101,8 +101,8 @@ void madt_init()
 		case MADT_LAPIC_OVERRIDE: {
 			madt_lapic_override_t *override = (madt_lapic_override_t *)entry;
 			lapic_base = override->addr;
-			klogv("Overridden LAPIC base address: 0x%llx",
-				  (unsigned long long)override->addr);
+			klog("Overridden LAPIC base address: 0x%llx",
+				 (unsigned long long)override->addr);
 			break;
 		}
 		case MADT_NMI_SRC:
@@ -116,6 +116,6 @@ void madt_init()
 
 		entry += mhdr->len;
 	}
-	klogv("MADT summary: lapics=%zu ioapics=%zu isos=%zu nmis=%zu", lapic_count,
-		  ioapic_count, iso_count, nmi_count);
+	klog("MADT summary: lapics=%zu ioapics=%zu isos=%zu nmis=%zu", lapic_count,
+		 ioapic_count, iso_count, nmi_count);
 }
