@@ -27,8 +27,6 @@ uint64_t boot_tsc = 0;
 struct flanterm_context *ft_ctx = NULL;
 uint64_t hhdm_offset = 0;
 
-#define BOOT_TICK_EVERY 100
-
 static interrupt_frame_t *boot_tick(interrupt_frame_t *frame)
 {
 	klog("hello from CPU%u", cpu_current()->index);
