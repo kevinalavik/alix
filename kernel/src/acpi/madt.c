@@ -1,12 +1,13 @@
 #include <acpi/madt.h>
 #define KLOG_NS "madt"
 #include <log/klog.h>
+#include <debug/panic.h>
 
 void madt_init()
 {
 	sdt_header_t *h = acpi_get_table("APIC");
 	if (h == NULL) {
-		klog("MADT/APIC table not found");
+		kpanic(NULL, "MADT not found, cant continue without APIC support");
 		return;
 	}
 
