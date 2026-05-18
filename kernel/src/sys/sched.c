@@ -574,6 +574,29 @@ void sched_yield(void)
 	sched_run_next_locked(cpu, current);
 }
 
+void thread_block_current(sched_release_fn_t release, void *arg)
+{
+	struct cpu_info *cpu = cpu_current();
+	tcb_t *current;
+
+	if (!cpu || !cpu->idle_thread || !cpu->current_thread)
+		return;
+
+	current = cpu->current_thread;
+	if (current == cpu->idle_thread)
+		return;
+
+	sched_cpu_lock(cpu);
+	current->status = THREAD_BLOCKED;
+	if (rq_contains(&cpu->rq, current))
+		rq_remove(&cpu->rq, current);
+
+	if (release)
+		release(arg);
+
+	sched_run_next_locked(cpu, current);
+}
+
 void thread_block(tcb_t *thread)
 {
 	struct cpu_info *cpu;

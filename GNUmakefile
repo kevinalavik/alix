@@ -67,6 +67,12 @@ kernel/.deps-obtained kernel/kconfiglib/kconfiglib.py kernel/kconfiglib/menuconf
 .PHONY: FORCE
 FORCE:
 
+INITRD_INPUTS := $(shell find initrd -mindepth 1 2>/dev/null | LC_ALL=C sort)
+
+initrd.cpio: $(INITRD_INPUTS)
+	rm -f initrd.cpio
+	cd initrd && find . | LC_ALL=C sort | cpio -o -H newc --quiet > ../initrd.cpio
+
 kernel/bin/alix: FORCE kernel/.deps-obtained kernel/kconfiglib/kconfiglib.py
 	$(MAKE) -C kernel bin/alix
 
@@ -89,12 +95,14 @@ ISO_DEPS := \
 	limine-binary/limine-uefi-cd.bin \
 	limine-binary/BOOTX64.EFI \
 	limine-binary/BOOTIA32.EFI \
-	kernel/bin/alix
+	kernel/bin/alix \
+	initrd.cpio
 
 $(IMAGE_NAME).iso: $(ISO_DEPS)
 	rm -rf iso_root
 	mkdir -p iso_root/boot
 	cp -v kernel/bin/alix iso_root/boot/
+	cp -v initrd.cpio iso_root/boot/
 	mkdir -p iso_root/boot/limine
 	cp -v limine.conf limine-binary/limine-bios.sys limine-binary/limine-bios-cd.bin limine-binary/limine-uefi-cd.bin iso_root/boot/limine/
 	mkdir -p iso_root/EFI/BOOT
@@ -116,6 +124,7 @@ $(IMAGE_NAME).hdd: $(ISO_DEPS)
 	mformat -i $(IMAGE_NAME).hdd@@1M
 	mmd -i $(IMAGE_NAME).hdd@@1M ::/EFI ::/EFI/BOOT ::/boot ::/boot/limine
 	mcopy -i $(IMAGE_NAME).hdd@@1M kernel/bin/kernel ::/boot
+	mcopy -i $(IMAGE_NAME).hdd@@1M initrd.cpio ::/boot
 	mcopy -i $(IMAGE_NAME).hdd@@1M limine.conf limine-binary/limine-bios.sys ::/boot/limine
 	mcopy -i $(IMAGE_NAME).hdd@@1M limine-binary/BOOTX64.EFI ::/EFI/BOOT
 	mcopy -i $(IMAGE_NAME).hdd@@1M limine-binary/BOOTIA32.EFI ::/EFI/BOOT

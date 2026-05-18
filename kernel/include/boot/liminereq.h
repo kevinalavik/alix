@@ -39,6 +39,10 @@ LIMINE_REQUEST struct limine_rsdp_request rsdp_request = {
 	.id = LIMINE_RSDP_REQUEST_ID,
 	.revision = 0,
 };
+LIMINE_REQUEST struct limine_module_request module_request = {
+	.id = LIMINE_MODULE_REQUEST_ID,
+	.revision = 0,
+};
 
 __attribute__((used,
 			   section(".limine_requests_start"))) static volatile uint64_t

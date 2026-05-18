@@ -321,6 +321,19 @@ int kvsnprintf(char *buf, size_t bufsz, const char *fmt, va_list ap)
 			break;
 		}
 
+		case 'o': {
+			if (long_long)
+				buf_putu_base(buf, bufsz, &pos, va_arg(ap, unsigned long long),
+							  8, false, width, zero_pad, left_align);
+			else if (size_type)
+				buf_putu_base(buf, bufsz, &pos, va_arg(ap, size_t), 8, false,
+							  width, zero_pad, left_align);
+			else
+				buf_putu_base(buf, bufsz, &pos, va_arg(ap, unsigned int), 8,
+							  false, width, zero_pad, left_align);
+			break;
+		}
+
 		default:
 			buf_putc(buf, bufsz, &pos, '%');
 

@@ -18,6 +18,9 @@
 #include <flanterm_backends/fb.h>
 #include <lib/kprintf.h>
 #include <cpu/idt.h>
+#include <fs/initrd.h>
+#include <fs/tmpfs.h>
+#include <fs/vfs.h>
 #include <mm/mm.h>
 #include <lib/string.h>
 #include <sys/acpi.h>
@@ -28,9 +31,83 @@ uint64_t boot_tsc = 0;
 struct flanterm_context *ft_ctx = NULL;
 uint64_t hhdm_offset = 0;
 
+static bool kmain_string_equal(const char *lhs, const char *rhs)
+{
+	size_t lhs_len;
+	size_t rhs_len;
+
+	if (!lhs || !rhs)
+		return false;
+
+	lhs_len = strlen(lhs);
+	rhs_len = strlen(rhs);
+	return lhs_len == rhs_len && memcmp(lhs, rhs, lhs_len) == 0;
+}
+
+static bool kmain_string_ends_with(const char *str, const char *suffix)
+{
+	size_t str_len;
+	size_t suffix_len;
+
+	if (!str || !suffix)
+		return false;
+
+	str_len = strlen(str);
+	suffix_len = strlen(suffix);
+	if (suffix_len > str_len)
+		return false;
+
+	return kmain_string_equal(str + str_len - suffix_len, suffix);
+}
+
+static const char *kmain_basename(const char *path)
+{
+	const char *last = path;
+
+	if (!path)
+		return "";
+
+	for (const char *cursor = path; *cursor; cursor++) {
+		if (*cursor == '/')
+			last = cursor + 1;
+	}
+
+	return last;
+}
+
+static const struct limine_file *kmain_find_cpio_module(void)
+{
+	struct limine_module_response *response = module_request.response;
+
+	if (!response || response->module_count == 0 || !response->modules)
+		return NULL;
+
+	for (uint64_t i = 0; i < response->module_count; i++) {
+		const struct limine_file *module = response->modules[i];
+
+		if (module && module->path &&
+			kmain_string_ends_with(kmain_basename(module->path), ".cpio"))
+			return module;
+
+		if (module && module->string &&
+			kmain_string_ends_with(kmain_basename(module->string), ".cpio"))
+			return module;
+	}
+
+	return NULL;
+}
+
 void kmain(void)
 {
 	struct limine_framebuffer *framebuffer;
+	const struct limine_file *initrd_module;
+	vnode_t *initrd_node;
+	vnode_t *root_dir;
+	char readback[32];
+	size_t io_count;
+	dirent_t root_entries[8];
+	size_t root_bytes;
+	size_t root_count;
 
 	if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
 		kpanic(NULL, "unsupported limine base revision");
@@ -109,6 +186,61 @@ void kmain(void)
 
 	smp_init(mp_request.response);
 	sched_init();
+	vfs_init();
+	tmpfs_init();
+	if (vfs_mount(NULL, NULL, NULL, "tmpfs", NULL) != 0) {
+		kpanic(NULL, "failed to mount tmpfs root");
+	}
+
+	initrd_module = kmain_find_cpio_module();
+	if (!initrd_module) {
+		kpanic(NULL, "no .cpio initrd module found");
+	}
+
+	klog("found initrd module path='%s' size=%llu",
+		 initrd_module->path ? initrd_module->path : "<none>",
+		 (unsigned long long)initrd_module->size);
+	if (initrd_unpack(initrd_module->address, initrd_module->size) != 0) {
+		kpanic(NULL, "failed to unpack initrd");
+	}
+
+	if (vfs_open(vfsroot, "/hello.txt", O_RDONLY, &initrd_node) != 0) {
+		kpanic(NULL, "initrd test open failed");
+	}
+
+	memset(readback, 0, sizeof(readback));
+	io_count = 0;
+	if (vfs_read(initrd_node, readback, sizeof(readback) - 1, 0, &io_count,
+				 O_RDONLY) != 0) {
+		kpanic(NULL, "initrd test read failed");
+	}
+	klog("initrd test read %zu bytes: '%s'", io_count, readback);
+
+	if (vfs_close(initrd_node, O_RDONLY) != 0) {
+		kpanic(NULL, "initrd test close failed");
+	}
+
+	if (vfs_open(vfsroot, NULL, O_RDONLY | O_DIRECTORY, &root_dir) != 0) {
+		kpanic(NULL, "tmpfs test root dir open failed");
+	}
+
+	root_bytes = 0;
+	if (vfs_getdents(root_dir, root_entries, sizeof(root_entries), 0,
+					 &root_bytes) != 0) {
+		kpanic(NULL, "tmpfs test getdents failed");
+	}
+
+	root_count = root_bytes / sizeof(dirent_t);
+	for (size_t i = 0; i < root_count; i++) {
+		klog("ino=%llu type=%u name='%s'",
+			 (unsigned long long)root_entries[i].d_ino, root_entries[i].d_type,
+			 root_entries[i].d_name);
+	}
+
+	if (vfs_close(root_dir, O_RDONLY | O_DIRECTORY) != 0) {
+		kpanic(NULL, "tmpfs test root dir close failed");
+	}
+
 	timer_init(1000);
 	smp_wait_all_online();
 

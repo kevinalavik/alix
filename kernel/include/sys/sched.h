@@ -61,6 +61,7 @@ typedef enum {
 } proc_type_t;
 
 typedef void (*sched_entry_t)(void *arg);
+typedef void (*sched_release_fn_t)(void *arg);
 
 typedef struct tcb {
 	uint64_t tid;
@@ -75,6 +76,7 @@ typedef struct tcb {
 	uint64_t rip;
 
 	rq_node_t rq_node;
+	rq_node_t wait_node;
 	struct tcb *next;
 
 	pcb_t *parent;
@@ -108,6 +110,7 @@ void sched_reap(void);
 pcb_t *spawn_proc(const char *name, proc_type_t type, vas_t *vas);
 tcb_t *spawn_thread(const char *name, pcb_t *pcb, sched_entry_t entry,
 					void *arg);
+void thread_block_current(sched_release_fn_t release, void *arg);
 void thread_block(tcb_t *thread);
 void thread_wake(tcb_t *thread);
 void sched_exit(void) __attribute__((__noreturn__));
