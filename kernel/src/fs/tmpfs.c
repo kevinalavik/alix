@@ -45,7 +45,8 @@ static int tmpfs_close(vnode_t *node, int flags, cred_t *cred);
 static int tmpfs_read(vnode_t *node, void *buffer, size_t size,
 					  uintmax_t offset, int flags, size_t *readc, cred_t *cred);
 static int tmpfs_write(vnode_t *node, const void *buffer, size_t size,
-					   uintmax_t offset, int flags, size_t *writec, cred_t *cred);
+					   uintmax_t offset, int flags, size_t *writec,
+					   cred_t *cred);
 static int tmpfs_lookup(vnode_t *node, char *name, vnode_t **result,
 						cred_t *cred);
 static int tmpfs_create(vnode_t *parent, char *name, vattr_t *attr, mode_t type,
@@ -233,7 +234,8 @@ static int tmpfs_resize_node(tmpfs_vfs_t *fs, tmpfs_node_t *node, size_t size)
 }
 
 static tmpfs_node_t *tmpfs_alloc_node(tmpfs_vfs_t *fs, tmpfs_node_t *parent,
-									  const char *name, mode_t type, mode_t mode)
+									  const char *name, mode_t type,
+									  mode_t mode)
 {
 	tmpfs_node_t *node;
 	timespec_t now;
@@ -425,7 +427,8 @@ static int tmpfs_read(vnode_t *node, void *buffer, size_t size,
 }
 
 static int tmpfs_write(vnode_t *node, const void *buffer, size_t size,
-					   uintmax_t offset, int flags, size_t *writec, cred_t *cred)
+					   uintmax_t offset, int flags, size_t *writec,
+					   cred_t *cred)
 {
 	tmpfs_node_t *tnode;
 	tmpfs_vfs_t *fs;
@@ -462,8 +465,8 @@ static int tmpfs_write(vnode_t *node, const void *buffer, size_t size,
 
 	if (writec)
 		*writec = size;
-	ktrace("write inode=%llu size=%zu offset=%ju", (unsigned long long)tnode->inode,
-		   size, (uintmax_t)offset);
+	ktrace("write inode=%llu size=%zu offset=%ju",
+		   (unsigned long long)tnode->inode, size, (uintmax_t)offset);
 	return 0;
 }
 
@@ -547,8 +550,9 @@ static int tmpfs_create(vnode_t *parent_vnode, char *name, vattr_t *attr,
 	mutex_unlock(&parent_vnode->lock);
 
 	*result = &child->vnode;
-	klog("created %s '%s' inode=%llu mode=0%o", type == S_IFDIR ? "dir" : "file",
-		 name, (unsigned long long)child->inode, (unsigned int)child->mode);
+	ktrace("created %s '%s' inode=%llu mode=0%o",
+		   type == S_IFDIR ? "dir" : "file", name,
+		   (unsigned long long)child->inode, (unsigned int)child->mode);
 	return 0;
 }
 

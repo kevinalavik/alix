@@ -67,7 +67,8 @@ static bool initrd_string_equal(const char *lhs, const char *rhs)
 	return lhs_len == rhs_len && memcmp(lhs, rhs, lhs_len) == 0;
 }
 
-static void initrd_normalize_path(const char *name, char *path, size_t path_size)
+static void initrd_normalize_path(const char *name, char *path,
+								  size_t path_size)
 {
 	size_t src = 0;
 	size_t dst = 0;
@@ -75,8 +76,8 @@ static void initrd_normalize_path(const char *name, char *path, size_t path_size
 	if (path_size == 0)
 		return;
 
-	while (name && name[src] == '.'
-		   && (name[src + 1] == '/' || name[src + 1] == '\0')) {
+	while (name && name[src] == '.' &&
+		   (name[src + 1] == '/' || name[src + 1] == '\0')) {
 		if (name[src + 1] == '\0') {
 			path[0] = '\0';
 			return;
@@ -109,11 +110,11 @@ static int initrd_ensure_dir(const char *path, mode_t mode)
 	memset(&attr, 0, sizeof(attr));
 	attr.mode = S_IFDIR | (mode & ACCESSPERMS);
 	if (vfs_create(vfsroot, (char *)path, &attr, S_IFDIR, &node) != 0) {
-		klog("failed to create directory '%s' from initrd", path);
+		ktrace("failed to create directory '%s' from initrd", path);
 		return -1;
 	}
 
-	klog("created initrd directory '%s'", path);
+	ktrace("created initrd directory '%s'", path);
 	vnode_release(&node);
 	return 0;
 }
@@ -165,18 +166,18 @@ static int initrd_unpack_file(const char *path, mode_t mode, const void *data,
 	memset(&attr, 0, sizeof(attr));
 	attr.mode = S_IFREG | (mode & ACCESSPERMS);
 	if (vfs_create(vfsroot, (char *)path, &attr, S_IFREG, &node) != 0) {
-		klog("failed to create file '%s' from initrd", path);
+		ktrace("failed to create file '%s' from initrd", path);
 		return -1;
 	}
 
 	if (size != 0 &&
 		vfs_write(node, data, size, 0, &written, O_WRONLY | O_TRUNC) != 0) {
-		klog("failed to write file '%s' from initrd", path);
+		ktrace("failed to write file '%s' from initrd", path);
 		vnode_release(&node);
 		return -1;
 	}
 
-	klog("unpacked initrd file '%s' (%zu bytes)", path, written);
+	ktrace("unpacked initrd file '%s' (%zu bytes)", path, written);
 	vnode_release(&node);
 	return 0;
 }
@@ -191,7 +192,7 @@ int initrd_unpack(const void *buffer, size_t length)
 		return -1;
 	}
 
-	klog("unpacking initrd buffer=%p length=%zu", buffer, length);
+	ktrace("unpacking initrd buffer=%p length=%zu", buffer, length);
 	cursor = (const uint8_t *)buffer;
 	end = cursor + length;
 
@@ -214,12 +215,12 @@ int initrd_unpack(const void *buffer, size_t length)
 		mode = initrd_parse_hex(header->c_mode, sizeof(header->c_mode), &ok);
 		if (!ok)
 			return -1;
-		name_size =
-			initrd_parse_hex(header->c_namesize, sizeof(header->c_namesize), &ok);
+		name_size = initrd_parse_hex(header->c_namesize,
+									 sizeof(header->c_namesize), &ok);
 		if (!ok || name_size == 0)
 			return -1;
-		file_size =
-			initrd_parse_hex(header->c_filesize, sizeof(header->c_filesize), &ok);
+		file_size = initrd_parse_hex(header->c_filesize,
+									 sizeof(header->c_filesize), &ok);
 		if (!ok)
 			return -1;
 
@@ -258,6 +259,7 @@ int initrd_unpack(const void *buffer, size_t length)
 		cursor = data + initrd_align4(file_size);
 	}
 
-	klog("initrd unpack completed");
+	klog("unpacked initrd, total size %zu bytes",
+		 (size_t)(cursor - (const uint8_t *)buffer));
 	return 0;
 }

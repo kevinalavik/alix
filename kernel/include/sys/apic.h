@@ -88,5 +88,6 @@ void apic_cpu_init(uint8_t cpu_id);
 
 void ioapic_write_red(uint32_t gsi, uint8_t vec, uint8_t delivery_mode,
 					  uint8_t polarity, uint8_t trigger_mode, uint8_t lapic_id);
+int ioapic_set_irq_mask(uint8_t irq, int masked);
 
 #endif // SYS_APIC_H

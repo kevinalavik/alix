@@ -73,5 +73,6 @@ void irq_install(uint8_t irq, irq_callback callback, interrupt_frame_t *ctx,
 void irq_install_vector(uint8_t vector, irq_callback callback,
 						interrupt_frame_t *ctx, uint8_t lapic_id);
 void irq_uninstall_vector(uint8_t vector);
+void irq_uninstall(uint8_t irq);
 
 #endif // CPU_IDT_H

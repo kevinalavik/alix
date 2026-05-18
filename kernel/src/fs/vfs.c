@@ -214,16 +214,17 @@ int vfs_mount(vnode_t *backing, vnode_t *pathref, char *path, char *name,
 	type = vfs_find_type(name);
 	mutex_unlock(&vfs_registry_lock);
 	if (!type || !type->ops || !type->ops->mount) {
-		klog("mount failed for '%s': filesystem type not registered or missing mount op",
-			 name);
+		klog(
+			"mount failed for '%s': filesystem type not registered or missing mount op",
+			name);
 		return -1;
 	}
 
 	if (path) {
 		rc = vfs_lookup(&mountpoint, pathref, path, NULL, 0);
 		if (rc != 0) {
-			klog("mount failed for '%s': lookup of '%s' returned %d", name, path,
-				 rc);
+			klog("mount failed for '%s': lookup of '%s' returned %d", name,
+				 path, rc);
 			return rc;
 		}
 	}
@@ -248,7 +249,8 @@ int vfs_mount(vnode_t *backing, vnode_t *pathref, char *path, char *name,
 	}
 
 	if (!mounted->root) {
-		klog("mount failed for '%s': mounted filesystem has no root vnode", name);
+		klog("mount failed for '%s': mounted filesystem has no root vnode",
+			 name);
 		return -1;
 	}
 
@@ -258,7 +260,7 @@ int vfs_mount(vnode_t *backing, vnode_t *pathref, char *path, char *name,
 
 	if (!mountpoint) {
 		vfsroot = mounted->root;
-		klog("set global VFS root to vnode=%p", vfsroot);
+		ktrace("set global VFS root to vnode=%p", vfsroot);
 	}
 
 	klog("mounted fs '%s' at %s", name, mountpoint ? "vnode" : "root");
@@ -282,7 +284,7 @@ int vfs_lookup(vnode_t **result, vnode_t *start, char *path, char *lastcomp,
 	current = vfs_is_absolute_path(path) ? vfsroot : start;
 	current = vfs_follow_mounts(current);
 	if (!current) {
-		klog("lookup failed for '%s': no starting vnode", path);
+		ktrace("lookup failed for '%s': no starting vnode", path);
 		return -1;
 	}
 
@@ -300,8 +302,8 @@ int vfs_lookup(vnode_t **result, vnode_t *start, char *path, char *lastcomp,
 
 		component_len = vfs_component_length(cursor);
 		if (component_len == 0 || component_len >= sizeof(component)) {
-			klog("lookup failed for '%s': invalid component length %zu", path,
-				 component_len);
+			ktrace("lookup failed for '%s': invalid component length %zu", path,
+				   component_len);
 			return -1;
 		}
 
@@ -324,27 +326,28 @@ int vfs_lookup(vnode_t **result, vnode_t *start, char *path, char *lastcomp,
 			continue;
 
 		if (vfs_component_equal(component, "..", 2)) {
-			klog("lookup for '%s' rejected: '..' is not implemented", path);
+			ktrace("lookup for '%s' rejected: '..' is not implemented", path);
 			return -1;
 		}
 
 		if (!current->ops || !current->ops->lookup) {
-			klog("lookup failed for '%s': vnode %p has no lookup op", path,
-				 current);
+			ktrace("lookup failed for '%s': vnode %p has no lookup op", path,
+				   current);
 			return -1;
 		}
 
 		rc = current->ops->lookup(current, component, &next, NULL);
 		if (rc != 0) {
-			klog("lookup failed for '%s': component '%s' returned %d", path,
-				 component, rc);
+			ktrace("lookup failed for '%s': component '%s' returned %d", path,
+				   component, rc);
 			return rc;
 		}
 
 		current = vfs_follow_mounts(next);
 		if (!current) {
-			klog("lookup failed for '%s': component '%s' resolved to NULL vnode",
-				 path, component);
+			ktrace(
+				"lookup failed for '%s': component '%s' resolved to NULL vnode",
+				path, component);
 			return -1;
 		}
 
@@ -387,7 +390,8 @@ int vfs_open(vnode_t *ref, char *path, int flags, vnode_t **result)
 	if (node->ops && node->ops->open) {
 		rc = node->ops->open(&node, flags, NULL);
 		if (rc != 0) {
-			klog("open op failed for vnode=%p flags=0x%x rc=%d", node, flags, rc);
+			klog("open op failed for vnode=%p flags=0x%x rc=%d", node, flags,
+				 rc);
 			vnode_release(&node);
 			return rc;
 		}
@@ -421,8 +425,8 @@ int vfs_close(vnode_t *node, int flags)
 	return rc;
 }
 
-int vfs_write(vnode_t *node, const void *buffer, size_t size,
-			  uintmax_t offset, size_t *written, int flags)
+int vfs_write(vnode_t *node, const void *buffer, size_t size, uintmax_t offset,
+			  size_t *written, int flags)
 {
 	if (!node || !node->ops || !node->ops->write) {
 		klog("write rejected: vnode=%p write-op=%p", node,
@@ -461,8 +465,8 @@ int vfs_read(vnode_t *node, void *buffer, size_t size, uintmax_t offset,
 	}
 }
 
-int vfs_getdents(vnode_t *node, dirent_t *buffer, size_t size,
-				 uintmax_t offset, size_t *bytesread)
+int vfs_getdents(vnode_t *node, dirent_t *buffer, size_t size, uintmax_t offset,
+				 size_t *bytesread)
 {
 	if (!node || !node->ops || !node->ops->getdents) {
 		klog("getdents rejected: vnode=%p getdents-op=%p", node,

@@ -26,6 +26,7 @@
 #include <sys/acpi.h>
 #include <sys/sched.h>
 #include <acpi/madt.h>
+#include <sdi/host.h>
 
 uint64_t boot_tsc = 0;
 struct flanterm_context *ft_ctx = NULL;
@@ -101,13 +102,6 @@ void kmain(void)
 {
 	struct limine_framebuffer *framebuffer;
 	const struct limine_file *initrd_module;
-	vnode_t *initrd_node;
-	vnode_t *root_dir;
-	char readback[32];
-	size_t io_count;
-	dirent_t root_entries[8];
-	size_t root_bytes;
-	size_t root_count;
 
 	if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
 		kpanic(NULL, "unsupported limine base revision");
@@ -172,6 +166,9 @@ void kmain(void)
 				executable_address_request.response);
 	klog("kernel VAS: %p (pml4=%p)", kernel_vas, kernel_vas->pml4);
 	kheap_init();
+	if (sdi_kernel_init() != 0) {
+		kpanic(NULL, "failed to initialize SDI");
+	}
 
 	if (rsdp_request.response == NULL) {
 		kpanic(NULL, "no RSDP information");
@@ -203,42 +200,8 @@ void kmain(void)
 	if (initrd_unpack(initrd_module->address, initrd_module->size) != 0) {
 		kpanic(NULL, "failed to unpack initrd");
 	}
-
-	if (vfs_open(vfsroot, "/hello.txt", O_RDONLY, &initrd_node) != 0) {
-		kpanic(NULL, "initrd test open failed");
-	}
-
-	memset(readback, 0, sizeof(readback));
-	io_count = 0;
-	if (vfs_read(initrd_node, readback, sizeof(readback) - 1, 0, &io_count,
-				 O_RDONLY) != 0) {
-		kpanic(NULL, "initrd test read failed");
-	}
-	klog("initrd test read %zu bytes: '%s'", io_count, readback);
-
-	if (vfs_close(initrd_node, O_RDONLY) != 0) {
-		kpanic(NULL, "initrd test close failed");
-	}
-
-	if (vfs_open(vfsroot, NULL, O_RDONLY | O_DIRECTORY, &root_dir) != 0) {
-		kpanic(NULL, "tmpfs test root dir open failed");
-	}
-
-	root_bytes = 0;
-	if (vfs_getdents(root_dir, root_entries, sizeof(root_entries), 0,
-					 &root_bytes) != 0) {
-		kpanic(NULL, "tmpfs test getdents failed");
-	}
-
-	root_count = root_bytes / sizeof(dirent_t);
-	for (size_t i = 0; i < root_count; i++) {
-		klog("ino=%llu type=%u name='%s'",
-			 (unsigned long long)root_entries[i].d_ino, root_entries[i].d_type,
-			 root_entries[i].d_name);
-	}
-
-	if (vfs_close(root_dir, O_RDONLY | O_DIRECTORY) != 0) {
-		kpanic(NULL, "tmpfs test root dir close failed");
+	if (sdi_load_drivers("/drivers") != 0) {
+		kpanic(NULL, "failed to load SDI drivers");
 	}
 
 	timer_init(1000);

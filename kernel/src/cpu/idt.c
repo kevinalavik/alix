@@ -81,7 +81,7 @@ void irq_install(uint8_t irq, irq_callback callback, interrupt_frame_t *ctx,
 	}
 
 	irq_set_vector((uint8_t)(IRQ_BASE + irq), callback, ctx, lapic_id);
-	ioapic_write_red(0, (uint8_t)(IRQ_BASE + irq), IOAPIC_FIXED,
+	ioapic_write_red(irq, (uint8_t)(IRQ_BASE + irq), IOAPIC_FIXED,
 					 IOAPIC_ACTIVE_HI, IOAPIC_TRIGGER_EDGE, lapic_id);
 }
 

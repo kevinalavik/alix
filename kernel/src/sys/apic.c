@@ -132,6 +132,51 @@ void ioapic_write_red(uint32_t gsi, uint8_t vec, uint8_t delivery_mode,
 		   dest);
 }
 
+static uint32_t ioapic_gsi_for_irq(uint8_t irq)
+{
+	for (size_t i = 0; i < iso_count; i++) {
+		if (isos[i]->src == irq)
+			return isos[i]->gsi;
+	}
+
+	return irq;
+}
+
+int ioapic_set_irq_mask(uint8_t irq, int masked)
+{
+	uint32_t gsi;
+	size_t i;
+
+	if (irq >= 16)
+		return -1;
+
+	gsi = ioapic_gsi_for_irq(irq);
+	for (i = 0; i < ioapic_count; i++) {
+		uint8_t maxreds =
+			(ioapic_read((uintptr_t)PHYS_TO_VIRT(ioapics[i]->addr),
+						 IOAPICVER) >>
+			 16) &
+			0xFF;
+		if (ioapics[i]->gsi_base <= gsi && ioapics[i]->gsi_base + maxreds > gsi)
+			break;
+	}
+
+	if (i == ioapic_count)
+		return -1;
+
+	uintptr_t base = (uintptr_t)PHYS_TO_VIRT(ioapics[i]->addr);
+	uint32_t pin = gsi - ioapics[i]->gsi_base;
+	uint32_t low = ioapic_read(base, IOAPICREDTBLL(pin));
+
+	if (masked)
+		low |= 0x10000;
+	else
+		low &= ~0x10000u;
+
+	ioapic_write(base, IOAPICREDTBLL(pin), low);
+	return 0;
+}
+
 void apic_cpu_init(uint8_t cpu_index)
 {
 	uint64_t base_msr = rdmsr(0x1B);

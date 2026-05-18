@@ -95,10 +95,17 @@ void pmm_init(void)
 	page_t *page;
 	uint64_t pfn;
 
-	pfndb_for_each_free(page, pfn)
-	{
+	pfndb_for_each_free(page, pfn) {
 		page->order = 0;
 		ClearPageFlag(page, PAGE_FREE);
+		SetPageFlag(page, PAGE_USED);
+	}
+
+	for (pfn = 0, page = pfndb_getptr(0); pfn <= pfndb_getmax();
+		 pfn++, page = pfndb_getptr(pfn)) {
+		if (!PageUsed(page) || PageReserved(page))
+			continue;
+
 		free_block(page);
 		free_page_count++;
 		total_page_count++;

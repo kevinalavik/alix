@@ -1,4 +1,5 @@
 /limine-binary
 /edk2-ovmf
+/drivers/bin
 *.iso
 *.hdd

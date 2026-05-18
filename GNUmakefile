@@ -68,10 +68,23 @@ kernel/.deps-obtained kernel/kconfiglib/kconfiglib.py kernel/kconfiglib/menuconf
 FORCE:
 
 INITRD_INPUTS := $(shell find initrd -mindepth 1 2>/dev/null | LC_ALL=C sort)
+DRIVER_OUTPUTS := $(shell $(MAKE) -s -C drivers print-outputs 2>/dev/null)
 
-initrd.cpio: $(INITRD_INPUTS)
+.PHONY: drivers
+drivers: kernel/.deps-obtained
+	$(MAKE) -C drivers
+
+$(DRIVER_OUTPUTS): FORCE kernel/.deps-obtained
+	$(MAKE) -C drivers
+
+initrd.cpio: $(INITRD_INPUTS) $(DRIVER_OUTPUTS)
 	rm -f initrd.cpio
-	cd initrd && find . | LC_ALL=C sort | cpio -o -H newc --quiet > ../initrd.cpio
+	rm -rf initrd_staging
+	mkdir -p initrd_staging
+	cp -R initrd/. initrd_staging/
+	if [ -n "$(DRIVER_OUTPUTS)" ]; then mkdir -p initrd_staging/drivers; cp -v $(DRIVER_OUTPUTS) initrd_staging/drivers/; fi
+	cd initrd_staging && find . | LC_ALL=C sort | cpio -o -H newc --quiet > ../initrd.cpio
+	rm -rf initrd_staging
 
 kernel/bin/alix: FORCE kernel/.deps-obtained kernel/kconfiglib/kconfiglib.py
 	$(MAKE) -C kernel bin/alix
@@ -132,7 +145,8 @@ $(IMAGE_NAME).hdd: $(ISO_DEPS)
 .PHONY: clean
 clean:
 	$(MAKE) -C kernel clean
-	rm -rf iso_root $(IMAGE_NAME).iso $(IMAGE_NAME).hdd
+	$(MAKE) -C drivers clean
+	rm -rf iso_root initrd_staging $(IMAGE_NAME).iso $(IMAGE_NAME).hdd
 
 .PHONY: distclean
 distclean: clean
